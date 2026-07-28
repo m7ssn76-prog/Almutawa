@@ -1,8 +1,10 @@
 name: ci
+
 on:
   push:
     branches: [main, agent/asa-aoip-mvp]
   pull_request:
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -13,4 +15,6 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements-dev.txt
       - run: ruff check app tests
+      - run: python -m compileall -q app tests
       - run: PYTHONPATH=. pytest -q
+      - run: docker build -t asa-aoip-knowledge-hub:test .
