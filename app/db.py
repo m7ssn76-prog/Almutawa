@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-DB_PATH = Path("asa_aoip.db")
+DB_PATH = Path(os.getenv("ASA_AOIP_DB_PATH", "/data/asa_aoip.db" if os.getenv("RENDER") else "asa_aoip.db"))
 
 
 def init_db() -> None:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute(
             """
