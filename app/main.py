@@ -24,7 +24,12 @@ app = FastAPI(
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "asa-aoip-knowledge-hub"}
+    try:
+        with get_conn() as conn:
+            conn.execute("SELECT 1").fetchone()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Database unavailable") from exc
+    return {"status": "ok", "service": "asa-aoip-knowledge-hub", "database": "ok"}
 
 
 @app.post("/api/v1/knowledge", response_model=KnowledgeItem, status_code=status.HTTP_201_CREATED)
