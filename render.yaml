@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: asa-aoip-knowledge-hub
+    runtime: docker
+    repo: https://github.com/m7ssn76-prog/Almutawa
+    branch: agent/asa-aoip-mvp
+    plan: starter
+    region: frankfurt
+    autoDeployTrigger: checksPass
+    healthCheckPath: /health
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - key: WEB_CONCURRENCY
+        value: "1"
+      - key: ASA_AOIP_DB_PATH
+        value: /data/asa_aoip.db
+    disk:
+      name: asa-aoip-data
+      mountPath: /data
+      sizeGB: 1
