@@ -11,6 +11,7 @@ from app.main import app
 def client(tmp_path, monkeypatch) -> Iterator[TestClient]:
     database_path = tmp_path / "test_asa_aoip.db"
     monkeypatch.setattr(db, "DB_PATH", database_path)
+    db.init_db()
 
     with TestClient(app) as test_client:
         yield test_client
@@ -19,7 +20,11 @@ def client(tmp_path, monkeypatch) -> Iterator[TestClient]:
 def test_health(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json()["status"] == "ok"
+    assert response.json() == {
+        "status": "ok",
+        "service": "asa-aoip-knowledge-hub",
+        "database": "ok",
+    }
 
 
 def test_knowledge_crud(client: TestClient) -> None:
