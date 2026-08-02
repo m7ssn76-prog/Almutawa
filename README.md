@@ -1,16 +1,47 @@
 # ASA/AOIP Knowledge Hub
 
-A tested MVP for governed organizational knowledge management. This repository is not a production deployment and does not claim connection to TechnipFMC, Azure, Replit, company systems, devices, or external databases.
+A controlled software foundation for governed organizational knowledge management.
 
-## Included
+## Legal and ownership status
+
+**Copyright © 2026 Abdulmohsen Basim Almutawa. All rights reserved.**
+
+This project is proprietary and is not released under an open-source license. No permission is granted to copy, modify, publish, distribute, sublicense, sell, or deploy the source code or documentation without prior written authorization from the copyright owner.
+
+This repository is an independent project. It is not an official product, system, endorsement, or publication of any employer, customer, government entity, or other organization.
+
+## Confidentiality and data boundary
+
+The repository must contain only:
+
+- synthetic test data;
+- public information that is lawful to reuse; or
+- low-sensitivity material that has explicit written approval for this exact purpose.
+
+The following are prohibited:
+
+- employer or customer documents, procedures, drawings, specifications, exports, screenshots, or internal communications;
+- confidential, restricted, proprietary, operational, personal, or sensitive data;
+- internal URLs, tenant identifiers, system names, credentials, tokens, passwords, API keys, private keys, or connection strings;
+- unapproved logos, trademarks, branding, or material that could imply organizational approval;
+- production database files, logs, backups, recordings, or user uploads.
+
+See [DATA_HANDLING.md](DATA_HANDLING.md), [PUBLICATION_POLICY.md](PUBLICATION_POLICY.md), and [SECURITY.md](SECURITY.md).
+
+## Publication rule
+
+Protected development is intended to take place in a **private repository**. Public deployment, public demonstrations, source publication, or sharing with third parties is prohibited unless the owner completes a documented confidentiality, security, legal/IP, and data review.
+
+## Included in the current technical draft
 
 - FastAPI REST API and OpenAPI documentation
-- SQLite persistence
+- SQLite persistence for synthetic local testing only
 - Knowledge-item CRUD operations
 - Keyword search and lifecycle status filtering
 - Input validation
-- Docker and Docker Compose
+- Docker and Docker Compose for local verification
 - Automated tests and GitHub Actions CI
+- Repository policy scanning for secrets and prohibited file types
 
 ## Run locally
 
@@ -32,8 +63,9 @@ docker compose up --build
 ## Test
 
 ```bash
-ruff check app tests
-pytest -q
+python scripts/repo_policy_check.py
+ruff check app tests scripts
+PYTHONPATH=. pytest -q
 ```
 
 ## Main endpoints
@@ -47,4 +79,8 @@ pytest -q
 
 ## Project status
 
-**Discovery / Pre-Pilot — Revise.** This MVP provides a verifiable software foundation. Authentication, role-based access control, PostgreSQL, audit trails, document ingestion, semantic retrieval, and deployment hardening remain future work.
+**Discovery / Pre-Pilot — Revise.** This code is not approved for production, enterprise integration, company data, operational decisions, safety decisions, quality release, or engineering acceptance.
+
+## License
+
+See [LICENSE.md](LICENSE.md). No open-source rights are granted.
