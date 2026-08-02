@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query, status
+from fastapi import FastAPI, HTTPException, Query, Response, status
 
 from .db import get_conn, init_db
 from .schemas import KnowledgeCreate, KnowledgeItem, KnowledgeUpdate, Status
@@ -93,10 +93,15 @@ def update_knowledge(item_id: int, payload: KnowledgeUpdate) -> KnowledgeItem:
     return KnowledgeItem(**dict(row))
 
 
-@app.delete("/api/v1/knowledge/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_knowledge(item_id: int) -> None:
+@app.delete(
+    "/api/v1/knowledge/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+def delete_knowledge(item_id: int) -> Response:
     with get_conn() as conn:
         cur = conn.execute("DELETE FROM knowledge_items WHERE id = ?", (item_id,))
         conn.commit()
     if cur.rowcount == 0:
         raise HTTPException(status_code=404, detail="Knowledge item not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
