@@ -5,16 +5,27 @@ on:
     branches: [main, agent/asa-aoip-mvp]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements-dev.txt
-      - run: ruff check app tests
-      - run: python -m compileall -q app tests
-      - run: PYTHONPATH=. pytest -q
-      - run: docker build -t asa-aoip-knowledge-hub:test .
+      - name: Enforce repository privacy policy
+        run: python scripts/repo_policy_check.py
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Lint
+        run: ruff check app tests scripts
+      - name: Compile
+        run: python -m compileall -q app tests scripts
+      - name: Test
+        run: PYTHONPATH=. pytest -q
+      - name: Build local verification image
+        run: docker build -t asa-aoip-knowledge-hub:test .
