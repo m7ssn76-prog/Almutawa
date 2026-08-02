@@ -1,7 +1,54 @@
 __pycache__/
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
 .venv/
 *.pyc
-*.db
+
+# Secrets and credentials
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+credentials*.json
+secrets*.json
+
+# Databases, exports, logs, and backups
+*.db
+*.sqlite
+*.sqlite3
+*.bak
+*.log
+backups/
+data/
+exports/
+logs/
+uploads/
+company_data/
+internal/
+private/
+
+# Documents, archives, recordings, and raw evidence
+*.pdf
+*.doc
+*.docx
+*.xls
+*.xlsx
+*.ppt
+*.pptx
+*.zip
+*.7z
+*.rar
+*.m4a
+*.wav
+*.mp3
+
+# Local deployment/provider files
+.replit
+render.yaml
+render.yml
+vercel.json
+netlify.toml
