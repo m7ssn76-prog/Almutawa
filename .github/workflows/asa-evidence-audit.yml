@@ -1,0 +1,82 @@
+name: ASA Evidence Audit
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: asa-evidence-audit-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  evidence-audit:
+    name: Generate repository evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Generate evidence record
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p asa-evidence
+          timestamp="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          tracked_count="$(git ls-files | wc -l | tr -d ' ')"
+          commit_sha="${GITHUB_SHA}"
+          repository_id="${GITHUB_REPOSITORY_ID:-unknown}"
+          actor_id="${GITHUB_ACTOR_ID:-unknown}"
+
+          git ls-files -z \
+            | sort -z \
+            | xargs -0 sha256sum > asa-evidence/SHA256SUMS.txt
+
+          cat > asa-evidence/event.json <<EOF
+          {
+            "evidence_id": "EV-GH-ASA-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}",
+            "generated_at_utc": "${timestamp}",
+            "repository": "${GITHUB_REPOSITORY}",
+            "repository_id": "${repository_id}",
+            "ref": "${GITHUB_REF}",
+            "commit_sha": "${commit_sha}",
+            "event_name": "${GITHUB_EVENT_NAME}",
+            "actor": "${GITHUB_ACTOR}",
+            "actor_id": "${actor_id}",
+            "workflow": "${GITHUB_WORKFLOW}",
+            "run_id": "${GITHUB_RUN_ID}",
+            "run_number": "${GITHUB_RUN_NUMBER}",
+            "run_attempt": "${GITHUB_RUN_ATTEMPT}",
+            "tracked_file_count": ${tracked_count},
+            "external_connection": false,
+            "classification": "Internal Test Only"
+          }
+          EOF
+
+          sha256sum asa-evidence/event.json asa-evidence/SHA256SUMS.txt > asa-evidence/EVIDENCE_SHA256.txt
+
+      - name: Validate evidence files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s asa-evidence/event.json
+          test -s asa-evidence/SHA256SUMS.txt
+          test -s asa-evidence/EVIDENCE_SHA256.txt
+          sha256sum -c asa-evidence/EVIDENCE_SHA256.txt
+
+      - name: Upload evidence artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: asa-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: asa-evidence/
+          if-no-files-found: error
+          retention-days: 30
