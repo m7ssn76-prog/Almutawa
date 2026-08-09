@@ -1,0 +1,54 @@
+{
+  "record_id": "ASA-ACTIVATION-2026-08-09-001",
+  "recorded_at": "2026-08-09T07:09:00+03:00",
+  "system": "ASA / ChatGPT / GitHub Evidence Integration",
+  "classification": "Internal Test Only",
+  "status": "activated_and_verified_within_available_tools",
+  "components": {
+    "chatgpt": {
+      "status": "active",
+      "mode": "connected GitHub evidence monitoring",
+      "automation_title": "ASA GitHub Watch",
+      "automation_mode": "hourly condition watch",
+      "write_behavior": "read-only monitoring; no future GitHub mutation unless ABM explicitly requests it"
+    },
+    "asa": {
+      "status": "active_for_github_evidence_governance",
+      "policy_file": ".asa/audit-policy.json",
+      "policy_commit_sha": "dc7d0a94017cc3350374476e07b2a4cfffb98af0",
+      "scope": "evidence, provenance, SHA-256, actor/event metadata and status gating"
+    },
+    "github": {
+      "status": "active_and_verified",
+      "repository": "m7ssn76-prog/Almutawa",
+      "repository_id": 1305663312,
+      "workflow_file": ".github/workflows/asa-evidence-audit.yml",
+      "workflow_commit_sha": "f43b51a0b780d2ccd9e76eb688801c614e72ab3a",
+      "verification_context": "ASA/evidence-audit",
+      "verification_state": "success"
+    }
+  },
+  "verified_controls": [
+    "GitHub Actions permissions limited to contents:read and statuses:write",
+    "checkout credentials are not persisted",
+    "tracked files are SHA-256 hashed during audit",
+    "event metadata includes repository, commit SHA, actor, event and run identifiers",
+    "evidence artifacts are generated and validated before upload",
+    "workflow publishes a verifiable success/failure commit status",
+    "no PAT or API key is written into repository files"
+  ],
+  "boundaries": {
+    "production_deployment": false,
+    "institutional_approval": false,
+    "enterprise_sso_kms_hsm": false,
+    "external_company_data_authorization": false,
+    "other_github_accounts": "not automatically merged or attributed"
+  },
+  "evidence": {
+    "github_status_check": {
+      "commit_sha": "f43b51a0b780d2ccd9e76eb688801c614e72ab3a",
+      "context": "ASA/evidence-audit",
+      "state": "success"
+    }
+  }
+}
