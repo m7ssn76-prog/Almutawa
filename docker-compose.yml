@@ -2,8 +2,10 @@ services:
   api:
     build: .
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
+    environment:
+      ASA_AOIP_DB_PATH: /data/asa_aoip.db
     volumes:
-      - asa_data:/app/data
+      - asa_data:/data
 volumes:
   asa_data:
