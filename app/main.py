@@ -75,18 +75,24 @@ def get_knowledge(item_id: int) -> KnowledgeItem:
 
 @app.patch("/api/v1/knowledge/{item_id}", response_model=KnowledgeItem)
 def update_knowledge(item_id: int, payload: KnowledgeUpdate) -> KnowledgeItem:
-    changes = payload.model_dump(exclude_none=True)
-    if not changes:
+    if payload.title is None and payload.content is None and payload.status is None:
         raise HTTPException(status_code=400, detail="No changes supplied")
-    assignments = ", ".join(f"{key} = ?" for key in changes)
-    values = list(changes.values()) + [item_id]
+
     with get_conn() as conn:
         exists = conn.execute("SELECT id FROM knowledge_items WHERE id = ?", (item_id,)).fetchone()
         if exists is None:
             raise HTTPException(status_code=404, detail="Knowledge item not found")
+
         conn.execute(
-            f"UPDATE knowledge_items SET {assignments}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            values,
+            """
+            UPDATE knowledge_items
+            SET title = COALESCE(?, title),
+                content = COALESCE(?, content),
+                status = COALESCE(?, status),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (payload.title, payload.content, payload.status, item_id),
         )
         conn.commit()
         row = conn.execute("SELECT * FROM knowledge_items WHERE id = ?", (item_id,)).fetchone()
