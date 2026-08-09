@@ -4,7 +4,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Status = Literal["draft", "reviewed", "approved", "archived"]
+# Pre-pilot API states only. "approved" is intentionally excluded until
+# authenticated RBAC and an authorized approval workflow are implemented.
+Status = Literal["draft", "reviewed", "archived"]
 
 
 class KnowledgeCreate(BaseModel):
