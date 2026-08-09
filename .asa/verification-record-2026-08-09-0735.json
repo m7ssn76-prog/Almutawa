@@ -1,0 +1,47 @@
+{
+  "record_id": "ASA-VERIFY-2026-08-09-0735-001",
+  "recorded_at": "2026-08-09T07:35:00+03:00",
+  "classification": "Internal Test Only",
+  "subject": "ChatGPT + ASA + GitHub activation documentation",
+  "repository": {
+    "full_name": "m7ssn76-prog/Almutawa",
+    "repository_id": 1305663312,
+    "default_branch": "main"
+  },
+  "verified_components": {
+    "asa_policy": {
+      "file": ".asa/audit-policy.json",
+      "commit_sha": "dc7d0a94017cc3350374476e07b2a4cfffb98af0",
+      "status": "present"
+    },
+    "github_actions_audit": {
+      "workflow_file": ".github/workflows/asa-evidence-audit.yml",
+      "verification_commit_sha": "f43b51a0b780d2ccd9e76eb688801c614e72ab3a",
+      "status_context": "ASA/evidence-audit",
+      "status_state": "success",
+      "verified_at": "2026-08-09T07:35:00+03:00"
+    },
+    "chatgpt_monitoring": {
+      "automation_title": "ASA GitHub Watch",
+      "status": "enabled",
+      "mode": "hourly condition watch",
+      "behavior": "read-only monitoring; notify on meaningful repository, audit, permission, or evidence changes"
+    }
+  },
+  "controls": [
+    "SHA-256 evidence hashing",
+    "commit and repository identifiers retained",
+    "actor and event metadata recorded by audit workflow",
+    "no secrets or PAT/API key values stored in repository documentation",
+    "future monitoring does not modify GitHub",
+    "status remains Internal Test Only unless stronger evidence and approvals exist"
+  ],
+  "boundaries": {
+    "production_deployment": false,
+    "institutional_approval": false,
+    "enterprise_sso_kms_hsm": false,
+    "company_data_authorization": false,
+    "automatic_identity_merge_across_github_accounts": false
+  },
+  "verification_result": "documented_and_verified_within_available_tools"
+}
