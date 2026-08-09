@@ -1,0 +1,41 @@
+{
+  "record_id": "ASA-AOIP-OWNER-AUTH-2026-08-09-001",
+  "recorded_at_asia_riyadh": "2026-08-09T08:23:00+03:00",
+  "project": "ASA/AOIP",
+  "repository": "m7ssn76-prog/Almutawa",
+  "authority": {
+    "declared_by": "ABM / Abdulmohsen Basim Almutawa",
+    "basis": "Explicit user declaration in ChatGPT: owner states he is the authorized authority for this project",
+    "scope": "ASA/AOIP project-owner and project-authority scope only",
+    "project_owner_approval": "APPROVED",
+    "merge_to_main_authorization": "APPROVED",
+    "production_candidate_authorization": "APPROVED_WITH_TECHNICAL_GATES"
+  },
+  "technical_evidence": {
+    "pre_merge_head_sha": "7fdd755f88eb5ce0b0e7d30cc02ef657fa90c434",
+    "ci_run_id": 31296623362,
+    "ci_run_number": 52,
+    "ci_result": "SUCCESS",
+    "privacy_policy_check": "PASS",
+    "dependency_audit_pip_audit": "PASS",
+    "static_security_bandit": "PASS",
+    "ruff": "PASS",
+    "compile": "PASS",
+    "automated_tests": "PASS",
+    "docker_build": "PASS",
+    "merge_commit_sha": "0198e07f301d019b00e0cb9dfbec7029510999a8"
+  },
+  "deployment_state": {
+    "code_merged_to_main": true,
+    "live_production_host_deployed": false,
+    "production_endpoint_verified": false,
+    "reason": "No authorized production hosting target or deployment credentials are connected in the current tool context."
+  },
+  "external_authority_boundary": {
+    "employer_approval": "NOT CLAIMED / NOT VERIFIED",
+    "government_approval": "NOT CLAIMED / NOT VERIFIED",
+    "third_party_institutional_approval": "NOT CLAIMED / NOT VERIFIED",
+    "enterprise_sso_rbac_kms_hsm": "NOT DEMONSTRATED"
+  },
+  "decision": "OWNER/PROJECT AUTHORITY APPROVED. HARDENED CODE MERGED TO MAIN AFTER CI SECURITY GATES PASSED. LIVE PRODUCTION DEPLOYMENT REMAINS PENDING AN AUTHORIZED HOSTING TARGET AND VERIFIED DEPLOYMENT ENDPOINT."
+}
