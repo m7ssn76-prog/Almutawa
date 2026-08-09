@@ -32,7 +32,7 @@ def test_knowledge_crud(client: TestClient) -> None:
         "/api/v1/knowledge",
         json={
             "title": "Welding lesson",
-            "content": "Documented cladding lesson",
+            "content": "Synthetic pre-pilot lesson",
             "status": "reviewed",
         },
     )
@@ -45,10 +45,10 @@ def test_knowledge_crud(client: TestClient) -> None:
 
     updated = client.patch(
         f"/api/v1/knowledge/{item_id}",
-        json={"status": "approved"},
+        json={"status": "archived"},
     )
     assert updated.status_code == 200
-    assert updated.json()["status"] == "approved"
+    assert updated.json()["status"] == "archived"
 
     deleted = client.delete(f"/api/v1/knowledge/{item_id}")
     assert deleted.status_code == 204
@@ -60,13 +60,13 @@ def test_knowledge_crud(client: TestClient) -> None:
 def test_search_and_validation(client: TestClient) -> None:
     first = client.post(
         "/api/v1/knowledge",
-        json={"title": "Safety note", "content": "PPE and inspection"},
+        json={"title": "Safety note", "content": "Synthetic inspection example"},
     )
     second = client.post(
         "/api/v1/knowledge",
         json={
             "title": "Quality note",
-            "content": "WPS compliance",
+            "content": "Synthetic procedure example",
             "status": "reviewed",
         },
     )
@@ -75,7 +75,7 @@ def test_search_and_validation(client: TestClient) -> None:
 
     result = client.get(
         "/api/v1/knowledge",
-        params={"q": "WPS", "status": "reviewed"},
+        params={"q": "procedure", "status": "reviewed"},
     )
     assert result.status_code == 200
     assert len(result.json()) == 1
@@ -85,3 +85,15 @@ def test_search_and_validation(client: TestClient) -> None:
         json={"title": "x", "content": ""},
     )
     assert invalid.status_code == 422
+
+
+def test_approved_status_is_blocked_in_pre_pilot(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/knowledge",
+        json={
+            "title": "Approval boundary",
+            "content": "Synthetic test",
+            "status": "approved",
+        },
+    )
+    assert response.status_code == 422
