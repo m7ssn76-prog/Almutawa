@@ -1,0 +1,51 @@
+{
+  "system_id": "ASA-GITHUB-AUDIT-001",
+  "name": "ASA GitHub Evidence Audit",
+  "version": "1.0.0",
+  "repository": {
+    "full_name": "m7ssn76-prog/Almutawa",
+    "repository_id": 1305663312,
+    "owner_login": "m7ssn76-prog",
+    "owner_user_id": 257048777,
+    "default_branch": "main"
+  },
+  "status": "implemented_github_actions_pending_first_run",
+  "classification": "Internal Test Only",
+  "purpose": "Create traceable evidence for repository activity without reading secrets or modifying external repositories.",
+  "evidence": {
+    "id_prefix": "EV-GH-ASA",
+    "hash_algorithm": "SHA-256",
+    "record_commit_sha": true,
+    "record_actor": true,
+    "record_event": true,
+    "record_run_id": true,
+    "record_repository_id": true,
+    "hash_tracked_files": true
+  },
+  "allowed_operations": [
+    "read_repository_metadata",
+    "read_tracked_files_for_hashing",
+    "record_event_metadata",
+    "generate_sha256_manifest",
+    "upload_github_actions_artifact",
+    "chatgpt_read_and_summarize_evidence"
+  ],
+  "forbidden_operations": [
+    "read_or_print_secrets",
+    "store_tokens_or_pat_values",
+    "modify_external_repositories",
+    "push_generated_evidence_back_to_repository",
+    "claim_production_or_institutional_approval_without_evidence"
+  ],
+  "status_gate": {
+    "design": "may be documented",
+    "internal_test_only": "requires successful workflow run evidence",
+    "production": "not approved",
+    "institutional_approval": "external approval required"
+  },
+  "chatgpt_integration": {
+    "mode": "connected GitHub audit and evidence summarization",
+    "write_policy": "no GitHub write unless explicitly requested by ABM",
+    "secret_policy": "never request, display, or store PAT/API secrets in repository files"
+  }
+}
