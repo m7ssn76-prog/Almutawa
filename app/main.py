@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query, Response, status
@@ -23,20 +24,28 @@ app = FastAPI(
 )
 
 
-def local_runtime_gate() -> CapabilityGate:
-    """Conservative local gate for the pre-pilot runtime.
+def _env_flag(name: str, default: bool = True) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
-    This proves the gate is part of the application path without claiming
-    external authorization, external connectivity, or production readiness.
+
+def local_runtime_gate() -> CapabilityGate:
+    """Build the pre-pilot gate from explicit runtime controls.
+
+    Defaults preserve the existing local pre-pilot behavior. Deployments can
+    explicitly deny a control through environment variables. No external
+    authorization or connectivity is inferred by this function.
     """
     return CapabilityGate(
-        available=True,
-        eligible=True,
-        authorized=True,
-        connected=True,
-        executed=True,
-        tested=True,
-        evidenced=True,
+        available=_env_flag("ASA_GATE_AVAILABLE"),
+        eligible=_env_flag("ASA_GATE_ELIGIBLE"),
+        authorized=_env_flag("ASA_GATE_AUTHORIZED"),
+        connected=_env_flag("ASA_GATE_CONNECTED"),
+        executed=_env_flag("ASA_GATE_EXECUTED"),
+        tested=_env_flag("ASA_GATE_TESTED"),
+        evidenced=_env_flag("ASA_GATE_EVIDENCED"),
     )
 
 
