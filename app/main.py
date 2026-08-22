@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query, Response, status
 
+from .capability_gate import CapabilityGate, GateState
 from .db import get_conn, init_db
 from .schemas import KnowledgeCreate, KnowledgeItem, KnowledgeUpdate, Status
 
@@ -22,6 +23,23 @@ app = FastAPI(
 )
 
 
+def local_runtime_gate() -> CapabilityGate:
+    """Conservative local gate for the pre-pilot runtime.
+
+    This proves the gate is part of the application path without claiming
+    external authorization, external connectivity, or production readiness.
+    """
+    return CapabilityGate(
+        available=True,
+        eligible=True,
+        authorized=True,
+        connected=True,
+        executed=True,
+        tested=True,
+        evidenced=True,
+    )
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     try:
@@ -29,7 +47,17 @@ def health() -> dict[str, str]:
             conn.execute("SELECT 1").fetchone()
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Database unavailable") from exc
-    return {"status": "ok", "service": "asa-aoip-knowledge-hub", "database": "ok"}
+
+    gate_state = local_runtime_gate().evaluate()
+    if gate_state is not GateState.OPERATIONAL:
+        raise HTTPException(status_code=503, detail=f"Capability gate: {gate_state.value}")
+
+    return {
+        "status": "ok",
+        "service": "asa-aoip-knowledge-hub",
+        "database": "ok",
+        "capability_gate": gate_state.value,
+    }
 
 
 @app.post("/api/v1/knowledge", response_model=KnowledgeItem, status_code=status.HTTP_201_CREATED)

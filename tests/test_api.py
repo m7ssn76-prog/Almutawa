@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import db
+from app.capability_gate import CapabilityGate
 from app.main import app
 
 
@@ -24,7 +25,28 @@ def test_health(client: TestClient) -> None:
         "status": "ok",
         "service": "asa-aoip-knowledge-hub",
         "database": "ok",
+        "capability_gate": "Operational",
     }
+
+
+def test_health_blocks_when_capability_gate_fails(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.main.local_runtime_gate",
+        lambda: CapabilityGate(
+            available=True,
+            eligible=True,
+            authorized=False,
+            connected=False,
+            executed=False,
+            tested=False,
+            evidenced=False,
+        ),
+    )
+
+    response = client.get("/health")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Capability gate: Eligible"
 
 
 def test_knowledge_crud(client: TestClient) -> None:
