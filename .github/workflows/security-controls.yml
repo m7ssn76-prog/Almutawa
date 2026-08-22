@@ -1,0 +1,71 @@
+name: ASA Protection Controls
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: asa-protection-controls-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  protection-controls:
+    name: Validate protection controls
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify mandatory protection policy files
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in SECURITY.md DATA_HANDLING.md PUBLICATION_POLICY.md .asa/audit-policy.json .asa/activation-record-2026-08-09.json .asa/verification-record-2026-08-09-0735.json; do
+            test -s "$f"
+          done
+
+      - name: Enforce repository policy
+        run: python scripts/repo_policy_check.py
+
+      - name: Install security tooling
+        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+
+      - name: Dependency audit
+        run: pip-audit -r requirements.txt
+
+      - name: Static security scan
+        run: bandit -q -r app scripts
+
+      - name: Capability gate tests
+        run: PYTHONPATH=. pytest -q tests/test_capability_gate.py tests/test_api.py
+
+      - name: Compile protected code paths
+        run: python -m compileall -q app scripts tests
+
+      - name: Verify no generated evidence is committed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-files | grep -E '^asa-evidence/'; then
+            echo 'Committed generated evidence is forbidden.'
+            exit 1
+          fi
+
+      - name: Protection control summary
+        run: |
+          echo 'ASA protection controls: PASS'
+          echo 'Policy files: present'
+          echo 'Repository policy: enforced'
+          echo 'Dependency audit: passed'
+          echo 'Static security scan: passed'
+          echo 'Capability/API tests: passed'
+          echo 'Generated evidence write-back: prohibited'
