@@ -46,7 +46,7 @@ def test_health_blocks_when_capability_gate_fails(client: TestClient, monkeypatc
     response = client.get("/health")
 
     assert response.status_code == 503
-    assert response.json()["detail"] == "Capability gate: Authorized"
+    assert response.json()["detail"] == "Capability gate: Eligible"
 
 
 def test_knowledge_crud(client: TestClient) -> None:
