@@ -29,6 +29,30 @@ def test_health(client: TestClient) -> None:
     }
 
 
+def test_runtime_gate_reads_explicit_controls(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setenv("ASA_GATE_AUTHORIZED", "false")
+    response = client.get("/health")
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Capability gate: Eligible"
+
+
+def test_runtime_gate_can_reach_operational_from_explicit_controls(client: TestClient, monkeypatch) -> None:
+    for name in (
+        "ASA_GATE_AVAILABLE",
+        "ASA_GATE_ELIGIBLE",
+        "ASA_GATE_AUTHORIZED",
+        "ASA_GATE_CONNECTED",
+        "ASA_GATE_EXECUTED",
+        "ASA_GATE_TESTED",
+        "ASA_GATE_EVIDENCED",
+    ):
+        monkeypatch.setenv(name, "true")
+
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json()["capability_gate"] == "Operational"
+
+
 def test_health_blocks_when_capability_gate_fails(client: TestClient, monkeypatch) -> None:
     monkeypatch.setattr(
         "app.main.local_runtime_gate",
