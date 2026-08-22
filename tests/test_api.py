@@ -24,6 +24,7 @@ def test_health(client: TestClient) -> None:
         "status": "ok",
         "service": "asa-aoip-knowledge-hub",
         "database": "ok",
+        "capability_gate": "Operational",
     }
 
 
