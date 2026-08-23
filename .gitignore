@@ -13,6 +13,14 @@ __pycache__/
 *.key
 *.pfx
 *.p12
+*.key.txt
+*password*.txt
+*passwd*.txt
+*secret*.txt
+*credential*.txt
+*token*.txt
+*api_key*.txt
+*api-key*.txt
 credentials*.json
 secrets*.json
 
@@ -31,7 +39,7 @@ company_data/
 internal/
 private/
 
-# Documents, archives, recordings, and raw evidence
+# Documents, archives, recordings, media, and raw evidence
 *.pdf
 *.doc
 *.docx
@@ -45,6 +53,19 @@ private/
 *.m4a
 *.wav
 *.mp3
+*.aac
+*.flac
+*.ogg
+*.opus
+*.amr
+*.aiff
+*.aif
+*.caf
+*.wma
+*.webm
+*.mp4
+*.mov
+*.m4v
 
 # Local deployment/provider files
 .replit
