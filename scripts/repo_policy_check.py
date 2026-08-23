@@ -8,13 +8,24 @@ ROOT = Path(__file__).resolve().parents[1]
 
 BLOCKED_SUFFIXES = {
     ".7z",
+    ".aac",
+    ".aif",
+    ".aiff",
+    ".amr",
     ".bak",
+    ".caf",
     ".db",
     ".doc",
     ".docx",
+    ".flac",
     ".key",
     ".m4a",
+    ".m4v",
+    ".mov",
     ".mp3",
+    ".mp4",
+    ".ogg",
+    ".opus",
     ".p12",
     ".pdf",
     ".pem",
@@ -25,6 +36,8 @@ BLOCKED_SUFFIXES = {
     ".sqlite",
     ".sqlite3",
     ".wav",
+    ".webm",
+    ".wma",
     ".xls",
     ".xlsx",
     ".zip",
@@ -41,6 +54,18 @@ BLOCKED_NAMES = {
     "render.yml",
     "secrets.json",
     "vercel.json",
+}
+
+BLOCKED_FILENAME_PATTERNS = {
+    "plaintext key filename": re.compile(
+        r"(?i)(?:^|[._-])(?:aes\d*|encryption)?[._-]?key(?:[._-]|$)"
+    ),
+    "password-bearing filename": re.compile(
+        r"(?i)(?:^|[._-])(?:owner[._-]?)?(?:password|passwd|pwd)(?:[._-]|$)"
+    ),
+    "credential-bearing filename": re.compile(
+        r"(?i)(?:^|[._-])(?:credential|secret|access[._-]?token|api[._-]?key)(?:[._-]|$)"
+    ),
 }
 
 IGNORED_PARTS = {
@@ -127,6 +152,10 @@ def scan() -> list[str]:
 
         if lower_name in BLOCKED_NAMES:
             violations.append(f"blocked filename: {relative}")
+
+        for label, pattern in BLOCKED_FILENAME_PATTERNS.items():
+            if pattern.search(lower_name):
+                violations.append(f"{label}: {relative}")
 
         if path.suffix.lower() in BLOCKED_SUFFIXES:
             violations.append(f"blocked file type: {relative}")
