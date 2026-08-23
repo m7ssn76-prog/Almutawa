@@ -9,6 +9,12 @@ from typing import Iterator
 DB_PATH = Path(os.getenv("ASA_AOIP_DB_PATH", "/data/asa_aoip.db" if os.getenv("RENDER") else "asa_aoip.db"))
 
 
+def _ensure_column(conn: sqlite3.Connection, name: str, definition: str) -> None:
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(knowledge_items)").fetchall()}
+    if name not in columns:
+        conn.execute(f"ALTER TABLE knowledge_items ADD COLUMN {name} {definition}")
+
+
 def init_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(DB_PATH) as conn:
@@ -19,11 +25,21 @@ def init_db() -> None:
                 title TEXT NOT NULL,
                 content TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'draft',
+                source_type TEXT NOT NULL DEFAULT 'text',
+                purpose TEXT NOT NULL DEFAULT 'knowledge_management',
+                sensitivity TEXT NOT NULL DEFAULT 'internal',
+                transformation_state TEXT NOT NULL DEFAULT 'original',
+                provenance_hash TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
+        _ensure_column(conn, "source_type", "TEXT NOT NULL DEFAULT 'text'")
+        _ensure_column(conn, "purpose", "TEXT NOT NULL DEFAULT 'knowledge_management'")
+        _ensure_column(conn, "sensitivity", "TEXT NOT NULL DEFAULT 'internal'")
+        _ensure_column(conn, "transformation_state", "TEXT NOT NULL DEFAULT 'original'")
+        _ensure_column(conn, "provenance_hash", "TEXT NOT NULL DEFAULT ''")
         conn.commit()
 
 
