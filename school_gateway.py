@@ -2,6 +2,7 @@
 """External HTTPS gateway for Smart Education System.
 
 Safety boundary:
+- External connectivity is fail-closed unless explicitly approved for the run.
 - Synthetic write-smoke sends synthetic data only.
 - Official Ministry of Education smoke test verifies the public Noor integration metadata surface only.
 - Authenticated school smoke mode uses an authorized health/smoke endpoint and never sends real child/student records.
@@ -21,6 +22,19 @@ OFFICIAL_MOE_INTEGRATION_METADATA_URL = (
     "https://mip.moe.gov.sa/noor/FederationMetadata/2007-06/FederationMetadata.xml"
 )
 OFFICIAL_MOE_HOST = "mip.moe.gov.sa"
+EXTERNAL_INTEGRATION_APPROVAL_ENV = "ASA_EXTERNAL_INTEGRATION_APPROVED"
+
+
+def _external_integration_approved() -> bool:
+    return os.environ.get(EXTERNAL_INTEGRATION_APPROVAL_ENV, "").strip().lower() == "true"
+
+
+def _require_external_integration_approval() -> None:
+    if not _external_integration_approved():
+        raise PermissionError(
+            "External integration is not approved for this run. "
+            f"Set {EXTERNAL_INTEGRATION_APPROVAL_ENV}=true only after the required authorization is documented."
+        )
 
 
 def build_synthetic_payload() -> dict:
@@ -61,6 +75,7 @@ def _https_connection(host: str, port: int, timeout: int) -> http.client.HTTPSCo
 
 
 def post_json(url: str, payload: dict, timeout: int = 15) -> dict:
+    _require_external_integration_approval()
     if payload.get("contains_real_child_data") is not False or payload.get("synthetic") is not True:
         raise ValueError("Live smoke mode permits synthetic data only")
 
@@ -85,6 +100,7 @@ def post_json(url: str, payload: dict, timeout: int = 15) -> dict:
 
 
 def get_public_resource(url: str, allowed_hosts: set[str], timeout: int = 15) -> dict:
+    _require_external_integration_approval()
     host, port, path = _validate_https_url(url, allowed_hosts=allowed_hosts)
     connection = _https_connection(host, port, timeout)
     try:
@@ -108,6 +124,7 @@ def get_public_resource(url: str, allowed_hosts: set[str], timeout: int = 15) ->
 
 
 def live_smoke() -> dict:
+    _require_external_integration_approval()
     url = os.environ.get("SCHOOL_GATEWAY_SMOKE_URL", DEFAULT_SMOKE_URL)
     result = post_json(url, build_synthetic_payload())
     if not 200 <= result["status"] < 300:
@@ -122,6 +139,7 @@ def live_smoke() -> dict:
 
 
 def official_moe_integration_smoke() -> dict:
+    _require_external_integration_approval()
     result = get_public_resource(
         OFFICIAL_MOE_INTEGRATION_METADATA_URL,
         allowed_hosts={OFFICIAL_MOE_HOST},
@@ -150,15 +168,20 @@ def configured_school_api_status() -> dict:
     endpoint = os.environ.get("SCHOOL_API_ENDPOINT")
     token_present = bool(os.environ.get("SCHOOL_API_BEARER_TOKEN"))
     allowed_host_present = bool(os.environ.get("SCHOOL_API_ALLOWED_HOST"))
+    approved = _external_integration_approved()
     return {
         "configured": bool(endpoint),
         "credential_present": token_present,
         "host_allowlist_present": allowed_host_present,
-        "ready_for_authorized_operational_probe": bool(endpoint and token_present and allowed_host_present),
+        "external_integration_approved": approved,
+        "ready_for_authorized_operational_probe": bool(
+            approved and endpoint and token_present and allowed_host_present
+        ),
     }
 
 
 def authenticated_school_smoke() -> dict:
+    _require_external_integration_approval()
     endpoint = os.environ.get("SCHOOL_API_ENDPOINT")
     token = os.environ.get("SCHOOL_API_BEARER_TOKEN")
     allowed_host = os.environ.get("SCHOOL_API_ALLOWED_HOST")
@@ -216,6 +239,12 @@ def authenticated_school_smoke_if_configured() -> dict:
         os.environ.get("SCHOOL_API_BEARER_TOKEN"),
         os.environ.get("SCHOOL_API_ALLOWED_HOST"),
     ]
+    if not _external_integration_approved():
+        return {
+            "authenticated_school_api_connection": False,
+            "status": "skipped_external_integration_not_approved",
+            "credential_redacted": True,
+        }
     if not any(values):
         return {
             "authenticated_school_api_connection": False,
@@ -236,6 +265,7 @@ def self_test() -> dict:
         _validate_https_url(DEFAULT_SMOKE_URL)[0] == "postman-echo.com",
         _validate_https_url(OFFICIAL_MOE_INTEGRATION_METADATA_URL, {OFFICIAL_MOE_HOST})[0] == OFFICIAL_MOE_HOST,
         configured_school_api_status()["credential_present"] in {True, False},
+        configured_school_api_status()["external_integration_approved"] in {True, False},
     ]
     return {"passed": sum(checks), "total": len(checks), "all_passed": all(checks)}
 
@@ -254,6 +284,6 @@ if __name__ == "__main__":
             print(json.dumps(authenticated_school_smoke_if_configured(), indent=2))
         else:
             print(json.dumps({"name": "School Gateway", "tests": self_test()}, indent=2))
-    except (OSError, TimeoutError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+    except (OSError, TimeoutError, RuntimeError, PermissionError, ValueError, json.JSONDecodeError) as exc:
         print(json.dumps({"connection": False, "error": str(exc)}, indent=2))
         raise SystemExit(1)
