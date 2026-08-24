@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Education Guard Engine v4.1 — protection adapter for Smart Education System."""
+"""Education Guard Engine v4.2 — protection adapter for Smart Education System."""
 from smart_education_system import Event, evaluate
 import json
 
@@ -12,6 +12,7 @@ def guard(event: Event):
         "humiliation or public shaming",
         "unsafe confrontation",
         "forcing a child/student to resolve a serious safety case alone",
+        "provocative escalation when a safer de-escalation path is available",
     ]
     decision["escalation_chain"] = [
         "teacher when appropriate",
@@ -31,6 +32,8 @@ def self_test():
         (Event("family concern", age_stage="child", family_safety_concern=True), lambda d: not d["guardian_involvement_safe_to_consider"]),
         (Event("wellbeing", emotional_distress=True), lambda d: d["wellbeing_support_required"]),
         (Event("access", disability_or_access_need=True), lambda d: d["inclusion_support_required"]),
+        (Event("de-escalate", de_escalation_requested=True), lambda d: d["de_escalation"]["mode"] == "active"),
+        (Event("danger de-escalation", immediate_danger=True, de_escalation_requested=True), lambda d: d["de_escalation"]["mode"] == "safety_first"),
     ]
     results = [(guard(e), check) for e, check in cases]
     passed = sum(bool(check(result)) for result, check in results)
@@ -38,4 +41,4 @@ def self_test():
 
 
 if __name__ == "__main__":
-    print(json.dumps({"name": "Education Guard Engine v4.1", "status": "ready_github_internal_test", "tests": self_test()}, indent=2))
+    print(json.dumps({"name": "Education Guard Engine v4.2", "status": "ready_github_internal_test", "tests": self_test()}, indent=2))
