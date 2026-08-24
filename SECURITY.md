@@ -38,9 +38,23 @@ The controlled pre-pilot must use:
 - human verification of cited sources;
 - a documented stop mechanism.
 
+## Pre-pilot API authentication gate
+
+All `/api/v1/*` routes require a bearer token supplied through `ASA_API_BEARER_TOKEN`. The token must be at least 32 characters and must be provided through the runtime environment or an approved secret mechanism; it must never be committed to source control.
+
+The gate is fail-closed:
+
+- if the token is absent or too short, protected API routes return HTTP 503;
+- if the Authorization header is missing, protected API routes return HTTP 401;
+- if the supplied token does not match, protected API routes return HTTP 401;
+- token comparison uses constant-time comparison;
+- `/health` remains unauthenticated only to support bounded local health checks and does not expose stored knowledge content.
+
+This bearer-token control is an **Internal Test Only / pre-pilot safeguard**. It is not enterprise SSO, RBAC, MFA, identity federation, access certification, user lifecycle management, or institutional authorization. Those controls remain required before any production or enterprise use.
+
 ## Production external-connection guard
 
-The code contains a fail-closed external connectivity path for future authorized deployment testing. Its existence is **not** production approval or evidence of a production deployment.
+The code contains a fail-closed external connectivity path for future authorized deployment testing. Its existence is **not** production approval or evidence of a production deployment. The external health route is also protected by the pre-pilot API authentication gate.
 
 The external connection path requires all of the following at runtime:
 
