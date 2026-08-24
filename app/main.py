@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import ipaddress
 import os
 import re
@@ -11,7 +12,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-from fastapi import FastAPI, HTTPException, Query, Response, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response, status
 
 from .capability_gate import CapabilityGate, GateState
 from .db import get_conn, init_db
@@ -41,6 +42,7 @@ _PROMPT_INJECTION_PATTERNS = (
 
 _DERIVED_SOURCE_TYPES: set[SourceType] = {"audio_transcript", "ocr_text", "translation"}
 _MAX_EXTERNAL_RESPONSE_BYTES = 65_536
+_MIN_API_TOKEN_LENGTH = 32
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -150,13 +152,34 @@ def _env_flag(name: str, default: bool = True) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def local_runtime_gate() -> CapabilityGate:
-    """Build the pre-pilot gate from explicit runtime controls.
+def require_api_auth(authorization: str | None = Header(default=None)) -> None:
+    """Require an environment-backed bearer token for all pre-pilot API routes."""
+    expected = os.getenv("ASA_API_BEARER_TOKEN", "")
+    if len(expected) < _MIN_API_TOKEN_LENGTH:
+        raise HTTPException(
+            status_code=503,
+            detail="API authentication is not securely configured",
+        )
 
-    Defaults preserve the existing local pre-pilot behavior. Deployments can
-    explicitly deny a control through environment variables. No external
-    authorization, connectivity, or production readiness is inferred here.
-    """
+    prefix = "Bearer "
+    if not authorization or not authorization.startswith(prefix):
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    supplied = authorization[len(prefix) :].strip()
+    if not supplied or not hmac.compare_digest(supplied, expected):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid authentication credential",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+def local_runtime_gate() -> CapabilityGate:
+    """Build the pre-pilot gate from explicit runtime controls."""
     return CapabilityGate(
         available=_env_flag("ASA_GATE_AVAILABLE"),
         eligible=_env_flag("ASA_GATE_ELIGIBLE"),
@@ -240,7 +263,10 @@ def _external_probe() -> dict[str, str | int]:
     request = Request(
         target,
         method="GET",
-        headers={"User-Agent": "ASA-AOIP-Production-Probe/1.0", "Accept": "application/json,text/plain,*/*"},
+        headers={
+            "User-Agent": "ASA-AOIP-Production-Probe/1.0",
+            "Accept": "application/json,text/plain,*/*",
+        },
     )
     opener = build_opener(_NoRedirect)
     try:
@@ -280,13 +306,18 @@ def health() -> dict[str, str]:
     }
 
 
-@app.get("/api/v1/external/health")
+@app.get("/api/v1/external/health", dependencies=[Depends(require_api_auth)])
 def external_health() -> dict[str, str | int]:
     """Probe one explicitly approved HTTPS endpoint under fail-closed controls."""
     return _external_probe()
 
 
-@app.post("/api/v1/knowledge", response_model=KnowledgeItem, status_code=status.HTTP_201_CREATED)
+@app.post(
+    "/api/v1/knowledge",
+    response_model=KnowledgeItem,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_api_auth)],
+)
 def create_knowledge(payload: KnowledgeCreate) -> KnowledgeItem:
     provenance_hash = _guard_input(
         title=payload.title,
@@ -318,11 +349,17 @@ def create_knowledge(payload: KnowledgeCreate) -> KnowledgeItem:
             ),
         )
         conn.commit()
-        row = conn.execute("SELECT * FROM knowledge_items WHERE id = ?", (cur.lastrowid,)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM knowledge_items WHERE id = ?", (cur.lastrowid,)
+        ).fetchone()
     return _safe_item(row)
 
 
-@app.get("/api/v1/knowledge", response_model=list[KnowledgeItem])
+@app.get(
+    "/api/v1/knowledge",
+    response_model=list[KnowledgeItem],
+    dependencies=[Depends(require_api_auth)],
+)
 def list_knowledge(
     q: str | None = Query(default=None, max_length=200),
     status_filter: Status | None = Query(default=None, alias="status"),
@@ -342,7 +379,11 @@ def list_knowledge(
     return [_safe_item(row) for row in rows]
 
 
-@app.get("/api/v1/knowledge/{item_id}", response_model=KnowledgeItem)
+@app.get(
+    "/api/v1/knowledge/{item_id}",
+    response_model=KnowledgeItem,
+    dependencies=[Depends(require_api_auth)],
+)
 def get_knowledge(item_id: int) -> KnowledgeItem:
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM knowledge_items WHERE id = ?", (item_id,)).fetchone()
@@ -351,7 +392,11 @@ def get_knowledge(item_id: int) -> KnowledgeItem:
     return _safe_item(row)
 
 
-@app.patch("/api/v1/knowledge/{item_id}", response_model=KnowledgeItem)
+@app.patch(
+    "/api/v1/knowledge/{item_id}",
+    response_model=KnowledgeItem,
+    dependencies=[Depends(require_api_auth)],
+)
 def update_knowledge(item_id: int, payload: KnowledgeUpdate) -> KnowledgeItem:
     if all(
         value is None
@@ -368,7 +413,9 @@ def update_knowledge(item_id: int, payload: KnowledgeUpdate) -> KnowledgeItem:
         raise HTTPException(status_code=400, detail="No changes supplied")
 
     with get_conn() as conn:
-        current = conn.execute("SELECT * FROM knowledge_items WHERE id = ?", (item_id,)).fetchone()
+        current = conn.execute(
+            "SELECT * FROM knowledge_items WHERE id = ?", (item_id,)
+        ).fetchone()
         if current is None:
             raise HTTPException(status_code=404, detail="Knowledge item not found")
 
@@ -430,6 +477,7 @@ def update_knowledge(item_id: int, payload: KnowledgeUpdate) -> KnowledgeItem:
     "/api/v1/knowledge/{item_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
+    dependencies=[Depends(require_api_auth)],
 )
 def delete_knowledge(item_id: int) -> Response:
     with get_conn() as conn:
