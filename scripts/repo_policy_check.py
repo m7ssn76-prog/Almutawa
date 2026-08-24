@@ -102,6 +102,13 @@ CONCRETE_PATTERNS = {
     "GitHub token": re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}"),
     "OpenAI-style secret": re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
     "Slack token": re.compile(r"xox[baprs]-[A-Za-z0-9-]{20,}"),
+    "Google API key": re.compile(r"AIza[0-9A-Za-z_-]{35}"),
+    "Bearer credential": re.compile(
+        r"\bBearer\s+[A-Za-z0-9._~+/=-]{16,}\b", re.IGNORECASE
+    ),
+    "JWT-like token": re.compile(
+        r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"
+    ),
     "company-specific marker": re.compile(r"technipfmc", re.IGNORECASE),
     "company email domain": re.compile(r"@technipfmc\.com", re.IGNORECASE),
     "company internal URL": re.compile(
@@ -111,7 +118,7 @@ CONCRETE_PATTERNS = {
 
 ASSIGNMENT_PATTERNS = {
     "credential assignment": re.compile(
-        r"(?i)(?:api[_-]?key|client[_-]?secret|password|access[_-]?token)"
+        r"(?i)(?:api[_-]?key|client[_-]?secret|password|access[_-]?token|authorization)"
         r"\s*[:=]\s*['\"][^'\"\n]{8,}['\"]"
     ),
 }
