@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import db
+from app import main as main_module
 from app.capability_gate import CapabilityGate
 from app.main import app
 
@@ -252,3 +253,76 @@ def test_update_cannot_introduce_secret(client: TestClient) -> None:
     fetched = client.get(f"/api/v1/knowledge/{created.json()['id']}")
     assert fetched.status_code == 200
     assert fetched.json()["content"] == "Safe synthetic content"
+
+
+def test_external_connection_is_fail_closed_by_default(client: TestClient) -> None:
+    response = client.get("/api/v1/external/health")
+    assert response.status_code == 503
+    assert response.json()["detail"] == "External target is not configured"
+
+
+def test_external_target_requires_https(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setenv("ASA_PRODUCTION_MODE", "true")
+    monkeypatch.setenv("ASA_PRODUCTION_APPROVED", "true")
+    monkeypatch.setenv("ASA_EXTERNAL_ENABLED", "true")
+    monkeypatch.setenv("ASA_EXTERNAL_URL", "http://example.com/health")
+    monkeypatch.setenv("ASA_EXTERNAL_ALLOWED_HOSTS", "example.com")
+
+    response = client.get("/api/v1/external/health")
+    assert response.status_code == 503
+    assert response.json()["detail"] == "External target must use HTTPS"
+
+
+def test_external_target_blocks_private_resolution(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setenv("ASA_PRODUCTION_MODE", "true")
+    monkeypatch.setenv("ASA_PRODUCTION_APPROVED", "true")
+    monkeypatch.setenv("ASA_EXTERNAL_ENABLED", "true")
+    monkeypatch.setenv("ASA_EXTERNAL_URL", "https://example.com/health")
+    monkeypatch.setenv("ASA_EXTERNAL_ALLOWED_HOSTS", "example.com")
+    monkeypatch.setattr(
+        main_module.socket,
+        "getaddrinfo",
+        lambda *args, **kwargs: [(2, 1, 6, "", ("127.0.0.1", 443))],
+    )
+
+    response = client.get("/api/v1/external/health")
+    assert response.status_code == 503
+    assert response.json()["detail"] == "External target resolved to a blocked address"
+
+
+def test_external_probe_works_only_after_all_guards(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setenv("ASA_PRODUCTION_MODE", "true")
+    monkeypatch.setenv("ASA_PRODUCTION_APPROVED", "true")
+    monkeypatch.setenv("ASA_EXTERNAL_ENABLED", "true")
+    monkeypatch.setenv("ASA_EXTERNAL_URL", "https://example.com/health")
+    monkeypatch.setenv("ASA_EXTERNAL_ALLOWED_HOSTS", "example.com")
+    monkeypatch.setenv("ASA_EXTERNAL_TIMEOUT_SECONDS", "2")
+    monkeypatch.setattr(
+        main_module.socket,
+        "getaddrinfo",
+        lambda *args, **kwargs: [(2, 1, 6, "", ("93.184.216.34", 443))],
+    )
+
+    class FakeResponse:
+        status = 200
+
+        def read(self, size: int) -> bytes:
+            return b"ok"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class FakeOpener:
+        def open(self, request, timeout: float):
+            assert request.full_url == "https://example.com/health"
+            assert timeout == 2
+            return FakeResponse()
+
+    monkeypatch.setattr(main_module, "build_opener", lambda *args: FakeOpener())
+
+    response = client.get("/api/v1/external/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "host": "example.com", "http_status": 200}
