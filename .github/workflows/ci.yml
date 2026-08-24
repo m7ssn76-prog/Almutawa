@@ -4,9 +4,14 @@ on:
   push:
     branches: [main, agent/asa-aoip-mvp]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -34,8 +39,20 @@ jobs:
           done
       - name: Enforce repository privacy policy
         run: python scripts/repo_policy_check.py
+      - name: Verify local-only container exposure controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Eq '^USER[[:space:]]+app$' Dockerfile
+          grep -Fq '"127.0.0.1:8000:8000"' docker-compose.yml
+          if grep -Eq 'pip[[:space:]]+install[[:space:]]+.*--upgrade[[:space:]]+pip' Dockerfile; then
+            echo 'Unpinned pip self-upgrade is forbidden in the verification image.'
+            exit 1
+          fi
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
+      - name: Verify dependency consistency
+        run: python -m pip check
       - name: Audit dependencies
         run: pip-audit -r requirements.txt
       - name: Static security scan
