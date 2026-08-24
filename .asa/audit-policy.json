@@ -1,7 +1,7 @@
 {
   "system_id": "ASA-GITHUB-AUDIT-001",
   "name": "ASA GitHub Evidence Audit",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "repository": {
     "full_name": "m7ssn76-prog/Almutawa",
     "repository_id": 1305663312,
@@ -9,7 +9,7 @@
     "owner_user_id": 257048777,
     "default_branch": "main"
   },
-  "status": "implemented_github_actions_pending_first_run",
+  "status": "implemented_github_actions_verified_internal_test",
   "classification": "Internal Test Only",
   "purpose": "Create traceable evidence for repository activity without reading secrets or modifying external repositories.",
   "evidence": {
@@ -20,7 +20,8 @@
     "record_event": true,
     "record_run_id": true,
     "record_repository_id": true,
-    "hash_tracked_files": true
+    "hash_tracked_files": true,
+    "verification_rule": "Internal Test Only requires a successful GitHub Actions evidence-audit run tied to the relevant commit."
   },
   "allowed_operations": [
     "read_repository_metadata",
