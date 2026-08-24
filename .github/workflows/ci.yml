@@ -37,6 +37,29 @@ jobs:
             .asa/verification-record-2026-08-09-0735.json; do
             test -s "$f"
           done
+      - name: Verify audit status gate is not stale
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          policy = json.loads(Path('.asa/audit-policy.json').read_text(encoding='utf-8'))
+          expected_status = 'implemented_github_actions_verified_internal_test'
+          if policy.get('status') != expected_status:
+              raise SystemExit(f"Audit policy status must be {expected_status!r}")
+          if policy.get('classification') != 'Internal Test Only':
+              raise SystemExit('Audit classification must remain Internal Test Only')
+          PY
+      - name: Require immutable GitHub Action references
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -nE '^[[:space:]]*uses:[[:space:]]+[^@[:space:]]+@v[0-9]+' .github/workflows; then
+            echo 'Mutable major-version GitHub Action tags are forbidden; pin third-party actions to commit SHAs.'
+            exit 1
+          fi
       - name: Enforce repository privacy policy
         run: python scripts/repo_policy_check.py
       - name: Verify local-only container exposure controls
