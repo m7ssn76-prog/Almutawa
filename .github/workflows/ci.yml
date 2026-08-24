@@ -39,17 +39,21 @@ jobs:
       - name: Audit dependencies
         run: pip-audit -r requirements.txt
       - name: Static security scan
-        run: bandit -q -r app scripts smart_education_system.py education_guard_engine.py
+        run: bandit -q -r app scripts smart_education_system.py education_guard_engine.py school_gateway.py
       - name: Lint
-        run: ruff check app tests scripts smart_education_system.py education_guard_engine.py
+        run: ruff check app tests scripts smart_education_system.py education_guard_engine.py school_gateway.py
       - name: Compile
-        run: python -m compileall -q app tests scripts smart_education_system.py education_guard_engine.py
+        run: python -m compileall -q app tests scripts smart_education_system.py education_guard_engine.py school_gateway.py
       - name: Test
         run: PYTHONPATH=. pytest -q
       - name: Smart education self-test
         run: python smart_education_system.py
       - name: Education guard self-test
         run: python education_guard_engine.py
+      - name: School gateway synthetic self-test
+        run: python school_gateway.py
+      - name: External HTTPS synthetic connectivity smoke test
+        run: python school_gateway.py --live-smoke
       - name: Verify generated evidence is not committed
         shell: bash
         run: |
