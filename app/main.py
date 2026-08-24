@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import os
 import re
+import socket
 from contextlib import asynccontextmanager
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from fastapi import FastAPI, HTTPException, Query, Response, status
 
@@ -35,6 +40,12 @@ _PROMPT_INJECTION_PATTERNS = (
 )
 
 _DERIVED_SOURCE_TYPES: set[SourceType] = {"audio_transcript", "ocr_text", "translation"}
+_MAX_EXTERNAL_RESPONSE_BYTES = 65_536
+
+
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        return None
 
 
 def _contains_secret(value: str) -> bool:
@@ -157,6 +168,98 @@ def local_runtime_gate() -> CapabilityGate:
     )
 
 
+def _external_timeout() -> float:
+    raw = os.getenv("ASA_EXTERNAL_TIMEOUT_SECONDS", "3")
+    try:
+        timeout = float(raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail="Invalid external timeout configuration") from exc
+    if not 1 <= timeout <= 10:
+        raise HTTPException(status_code=503, detail="External timeout must be between 1 and 10 seconds")
+    return timeout
+
+
+def _allowed_external_hosts() -> set[str]:
+    return {
+        item.strip().lower().rstrip(".")
+        for item in os.getenv("ASA_EXTERNAL_ALLOWED_HOSTS", "").split(",")
+        if item.strip()
+    }
+
+
+def _validate_external_target(raw_url: str) -> tuple[str, str]:
+    if not _env_flag("ASA_PRODUCTION_MODE", default=False):
+        raise HTTPException(status_code=503, detail="Production mode is not enabled")
+    if not _env_flag("ASA_PRODUCTION_APPROVED", default=False):
+        raise HTTPException(status_code=503, detail="Production approval gate is closed")
+    if not _env_flag("ASA_EXTERNAL_ENABLED", default=False):
+        raise HTTPException(status_code=503, detail="External connection is disabled")
+
+    parsed = urlsplit(raw_url)
+    if parsed.scheme.lower() != "https":
+        raise HTTPException(status_code=503, detail="External target must use HTTPS")
+    if parsed.username or parsed.password:
+        raise HTTPException(status_code=503, detail="Credentials are forbidden in external URLs")
+    if not parsed.hostname:
+        raise HTTPException(status_code=503, detail="External target host is missing")
+
+    host = parsed.hostname.lower().rstrip(".")
+    if host not in _allowed_external_hosts():
+        raise HTTPException(status_code=503, detail="External target host is not allowlisted")
+
+    try:
+        addresses = socket.getaddrinfo(host, parsed.port or 443, type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise HTTPException(status_code=503, detail="External target DNS resolution failed") from exc
+
+    for address in addresses:
+        ip = ipaddress.ip_address(address[4][0])
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            raise HTTPException(status_code=503, detail="External target resolved to a blocked address")
+
+    return raw_url, host
+
+
+def _external_probe() -> dict[str, str | int]:
+    gate_state = local_runtime_gate().evaluate()
+    if gate_state is not GateState.OPERATIONAL:
+        raise HTTPException(status_code=503, detail=f"Capability gate: {gate_state.value}")
+
+    raw_url = os.getenv("ASA_EXTERNAL_URL", "").strip()
+    if not raw_url:
+        raise HTTPException(status_code=503, detail="External target is not configured")
+    target, host = _validate_external_target(raw_url)
+
+    request = Request(
+        target,
+        method="GET",
+        headers={"User-Agent": "ASA-AOIP-Production-Probe/1.0", "Accept": "application/json,text/plain,*/*"},
+    )
+    opener = build_opener(_NoRedirect)
+    try:
+        with opener.open(request, timeout=_external_timeout()) as response:
+            body = response.read(_MAX_EXTERNAL_RESPONSE_BYTES + 1)
+            if len(body) > _MAX_EXTERNAL_RESPONSE_BYTES:
+                raise HTTPException(status_code=502, detail="External response exceeded size limit")
+            status_code = int(response.status)
+    except HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"External target returned HTTP {exc.code}") from exc
+    except (URLError, TimeoutError, OSError) as exc:
+        raise HTTPException(status_code=502, detail="External target connection failed") from exc
+
+    if not 200 <= status_code < 300:
+        raise HTTPException(status_code=502, detail=f"External target returned HTTP {status_code}")
+
+    return {"status": "ok", "host": host, "http_status": status_code}
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     try:
@@ -175,6 +278,12 @@ def health() -> dict[str, str]:
         "database": "ok",
         "capability_gate": gate_state.value,
     }
+
+
+@app.get("/api/v1/external/health")
+def external_health() -> dict[str, str | int]:
+    """Probe one explicitly approved HTTPS endpoint under fail-closed controls."""
+    return _external_probe()
 
 
 @app.post("/api/v1/knowledge", response_model=KnowledgeItem, status_code=status.HTTP_201_CREATED)
