@@ -32,7 +32,7 @@ See [DATA_HANDLING.md](DATA_HANDLING.md), [PUBLICATION_POLICY.md](PUBLICATION_PO
 
 Protected development is intended to take place in a **private repository**. Public deployment, public demonstrations, source publication, or sharing with third parties is prohibited unless the owner completes a documented confidentiality, security, legal/IP, and data review.
 
-**Current control limitation:** this GitHub repository is presently public. Until repository visibility is changed through an authorized GitHub settings control, this repository must be treated as a public surface and must contain synthetic/public/explicitly approved low-sensitivity material only. Application code and CI checks reduce disclosure risk but do not make a public repository private.
+**Current control limitation:** this GitHub repository is presently public. Until repository visibility is changed through an authorized GitHub settings control, this repository must be treated as a public surface and must contain synthetic/public/explicitly approved low-sensitivity material only. Application code and CI checks reduce disclosure risk but do not make a public repository private. Branch protection/rulesets are also GitHub settings controls; CI policy checks complement them but cannot substitute for them.
 
 ## Included in the current technical draft
 
