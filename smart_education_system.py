@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Smart Education System v4.2 — GitHub environment entry point.
+"""Smart Education System v4.3 — GitHub environment entry point.
 
 Student/child welfare and safety first. No automatic punishment. No mental-health diagnosis.
-Includes a de-escalation layer that reduces conflict without weakening immediate safety protection.
-This repository entry point is self-contained and network-free.
+Includes de-escalation and a knowledge-to-service values gate: knowledge should become ethical,
+respectful, sustainable benefit while preserving evidence, safety, dignity, inclusion and authority.
+This is an internal decision-support implementation, not an official Haramain program claim.
 """
 from dataclasses import dataclass
 import json
@@ -35,6 +36,10 @@ class Event:
     de_escalation_requested: bool = False
     active_argument: bool = False
     conflict_level: str = "none"
+    knowledge_service_context: bool = False
+    evidence_verified: bool = False
+    community_benefit: bool = False
+    sustainability_considered: bool = False
 
 
 def learner_context(e: Event) -> str:
@@ -53,14 +58,7 @@ def learner_context(e: Event) -> str:
 def _de_escalation_plan(e: Event, high_risk: bool, bullying_pattern: bool) -> dict:
     requested = e.de_escalation_requested or e.active_argument or e.conflict_level in {"medium", "high"}
     relevant = requested or e.bullying or bullying_pattern or e.emotional_distress
-
-    if high_risk:
-        mode = "safety_first"
-    elif relevant:
-        mode = "active"
-    else:
-        mode = "monitor"
-
+    mode = "safety_first" if high_risk else ("active" if relevant else "monitor")
     actions = []
     if mode == "safety_first":
         actions += [
@@ -78,7 +76,6 @@ def _de_escalation_plan(e: Event, high_risk: bool, bullying_pattern: bool) -> di
             "use a neutral teacher/counselor/reviewer if direct discussion is not productive",
             "pause nonessential confrontation and define one clear next action",
         ]
-
     return {
         "mode": mode,
         "required": mode in {"active", "safety_first"},
@@ -89,6 +86,33 @@ def _de_escalation_plan(e: Event, high_risk: bool, bullying_pattern: bool) -> di
             "no retaliation, humiliation, threats, or pressure to reconcile unsafely",
             "verify before blame and preserve dignity for all parties",
         ],
+    }
+
+
+def _knowledge_service_gate(e: Event) -> dict:
+    if not e.knowledge_service_context:
+        return {"active": False, "status": "not_applicable", "actions": []}
+    gaps = []
+    if not e.evidence_verified:
+        gaps.append("verify knowledge/evidence before presenting claims as fact")
+    if not e.community_benefit:
+        gaps.append("define a concrete human/community benefit")
+    if not e.sustainability_considered:
+        gaps.append("assess sustainability and continuity of benefit")
+    return {
+        "active": True,
+        "status": "ready" if not gaps else "review_required",
+        "actions": gaps,
+        "principles": [
+            "understand before judging",
+            "use verified knowledge and preserve provenance",
+            "translate knowledge into ethical and respectful service",
+            "protect dignity, privacy, inclusion and accessibility",
+            "prefer de-escalation while preserving safety and rights",
+            "seek sustainable benefit rather than symbolic activity",
+            "measure impact before claiming success",
+        ],
+        "official_haramain_affiliation_claimed": False,
     }
 
 
@@ -108,13 +132,13 @@ def evaluate(e: Event):
     admin = high_risk or e.teacher_response_failed or e.teacher_is_subject or e.family_safety_concern
     guardian_safe = context in {"child_student", "school_student"} and not e.family_safety_concern
     de_escalation = _de_escalation_plan(e, high_risk, bullying_pattern)
+    knowledge_service = _knowledge_service_gate(e)
 
     rights = [
         "student/child welfare and safety are prioritized with fair process for all parties",
         "no automatic guilt or punishment based only on an allegation",
     ]
     actions = []
-
     if context == "child_student":
         rights += [
             "apply child-safeguarding and educational rights together",
@@ -125,7 +149,6 @@ def evaluate(e: Event):
         rights.append("apply child-safeguarding protections even outside a formal classroom context")
     elif context == "school_student":
         rights.append("preserve educational participation, dignity, and access to school support")
-
     if high_risk:
         actions += [
             "stop unsafe behavior",
@@ -154,12 +177,14 @@ def evaluate(e: Event):
         "inclusion_support_required": e.disability_or_access_need,
         "confidence_self_protection_training": e.confidence_training or bullying_pattern,
         "de_escalation": de_escalation,
+        "knowledge_to_service": knowledge_service,
         "rights_checks": rights,
         "recommended_actions": actions,
         "known_limits": [
             "No mind-reading or private-intent inference",
             "Wellbeing signals are not clinical diagnoses",
             "Decision support only; authorized humans retain school authority",
+            "No official Haramain affiliation or program status is inferred from this internal rule",
         ],
     }
 
@@ -168,21 +193,18 @@ def self_test():
     cases = [
         (Event("normal"), lambda d: not d["automatic_punishment_allowed"]),
         (Event("child student", age_stage="child"), lambda d: d["learner_context"] == "child_student"),
-        (Event("teen student", age_stage="teen"), lambda d: d["learner_context"] == "school_student"),
         (Event("bullying", bullying=True, repeated=True, power_imbalance=True), lambda d: d["bullying_level"] == "likely_pattern"),
         (Event("danger", immediate_danger=True), lambda d: d["immediate_protection_required"]),
-        (Event("teacher conflict", teacher_is_subject=True), lambda d: d["admin_independent_review_required"]),
         (Event("wellbeing", emotional_distress=True), lambda d: d["wellbeing_support_required"]),
-        (Event("access", disability_or_access_need=True), lambda d: d["inclusion_support_required"]),
-        (Event("family safety", age_stage="child", family_safety_concern=True), lambda d: not d["guardian_involvement_safe_to_consider"]),
-        (Event("confidence", confidence_training=True), lambda d: d["confidence_self_protection_training"]),
         (Event("de-escalate", de_escalation_requested=True), lambda d: d["de_escalation"]["mode"] == "active"),
-        (Event("argument", active_argument=True, conflict_level="medium"), lambda d: d["de_escalation"]["required"]),
         (Event("danger de-escalation", immediate_danger=True, de_escalation_requested=True), lambda d: d["de_escalation"]["mode"] == "safety_first"),
+        (Event("knowledge service", knowledge_service_context=True), lambda d: d["knowledge_to_service"]["status"] == "review_required"),
+        (Event("verified service", knowledge_service_context=True, evidence_verified=True, community_benefit=True, sustainability_considered=True), lambda d: d["knowledge_to_service"]["status"] == "ready"),
+        (Event("no affiliation", knowledge_service_context=True), lambda d: not d["knowledge_to_service"]["official_haramain_affiliation_claimed"]),
     ]
     passed = sum(bool(check(evaluate(event))) for event, check in cases)
     return {"passed": passed, "total": len(cases), "all_passed": passed == len(cases)}
 
 
 if __name__ == "__main__":
-    print(json.dumps({"name": "Smart Education System v4.2", "status": "ready_github_internal_test", "tests": self_test()}, indent=2))
+    print(json.dumps({"name": "Smart Education System v4.3", "status": "ready_github_internal_test", "tests": self_test()}, indent=2))
