@@ -8,14 +8,18 @@ from app import main as main_module
 from app.capability_gate import CapabilityGate
 from app.main import app
 
+TEST_API_TOKEN = "synthetic-test-token-000000000000000000000001"
+
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch) -> Iterator[TestClient]:
     database_path = tmp_path / "test_asa_aoip.db"
     monkeypatch.setattr(db, "DB_PATH", database_path)
+    monkeypatch.setenv("ASA_API_BEARER_TOKEN", TEST_API_TOKEN)
     db.init_db()
 
     with TestClient(app) as test_client:
+        test_client.headers.update({"Authorization": f"Bearer {TEST_API_TOKEN}"})
         yield test_client
 
 
@@ -48,6 +52,30 @@ def test_health_blocks_when_capability_gate_fails(client: TestClient, monkeypatc
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Capability gate: Eligible"
+
+
+def test_api_requires_bearer_auth(client: TestClient) -> None:
+    client.headers.pop("Authorization", None)
+    response = client.get("/api/v1/knowledge")
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Authentication required"
+    assert response.headers["www-authenticate"] == "Bearer"
+
+
+def test_api_rejects_invalid_bearer_auth(client: TestClient) -> None:
+    client.headers["Authorization"] = "Bearer invalid-synthetic-token-000000000000000000"
+    response = client.get("/api/v1/knowledge")
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid authentication credential"
+
+
+def test_api_fails_closed_when_token_not_configured(
+    client: TestClient, monkeypatch
+) -> None:
+    monkeypatch.delenv("ASA_API_BEARER_TOKEN")
+    response = client.get("/api/v1/knowledge")
+    assert response.status_code == 503
+    assert response.json()["detail"] == "API authentication is not securely configured"
 
 
 def test_knowledge_crud(client: TestClient) -> None:
