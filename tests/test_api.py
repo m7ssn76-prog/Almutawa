@@ -81,7 +81,7 @@ def test_api_requires_bearer_auth(client: TestClient) -> None:
 
 
 def test_api_rejects_invalid_bearer_auth(client: TestClient) -> None:
-    client.headers["Authorization"] = "Bearer invalid-synthetic-token-000000000000000000"
+    client.headers["Authorization"] = "Bearer " + ("invalid-" * 5)
     response = client.get("/api/v1/knowledge")
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid authentication credential"
