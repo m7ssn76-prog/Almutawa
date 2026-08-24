@@ -47,20 +47,25 @@ Protected development is intended to take place in a **private repository**. Pub
 
 ## Run locally
 
+The runtime capability gate is fail-closed. A direct local internal-test run must explicitly opt in to every gate stage that the local test has actually satisfied; missing gate variables keep `/health` blocked rather than inferring readiness.
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
+export ASA_GATE_AVAILABLE=true ASA_GATE_ELIGIBLE=true ASA_GATE_AUTHORIZED=true ASA_GATE_CONNECTED=true ASA_GATE_EXECUTED=true ASA_GATE_TESTED=true ASA_GATE_EVIDENCED=true
 uvicorn app.main:app --reload
 ```
 
-Open `http://127.0.0.1:8000/docs`.
+Open `http://127.0.0.1:8000/docs`. These local gate flags describe only an explicitly prepared local internal-test context; they do not establish production readiness or institutional approval.
 
 ## Run with Docker
 
 ```bash
 docker compose up --build
 ```
+
+Docker Compose declares the same gate flags explicitly for local-only verification and binds the service to `127.0.0.1`.
 
 ## Test
 
