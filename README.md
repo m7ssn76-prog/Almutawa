@@ -32,7 +32,7 @@ See [DATA_HANDLING.md](DATA_HANDLING.md), [PUBLICATION_POLICY.md](PUBLICATION_PO
 
 Protected development is intended to take place in a **private repository**. Public deployment, public demonstrations, source publication, or sharing with third parties is prohibited unless the owner completes a documented confidentiality, security, legal/IP, and data review.
 
-**Current control limitation:** this GitHub repository is presently public. Until repository visibility is changed through an authorized GitHub settings control, this repository must be treated as a public surface and must contain synthetic/public/explicitly approved low-sensitivity material only. Application code and CI checks reduce disclosure risk but do not make a public repository private. Branch protection/rulesets are also GitHub settings controls; CI policy checks complement them but cannot substitute for them.
+**Visibility verification note:** the repository owner reports that repository visibility has been changed to private. The connected repository metadata used during the current review had not yet reflected that change. Until GitHub repository metadata independently confirms `private`, continue to apply the same conservative data boundary. Branch protection/rulesets remain separate GitHub settings controls; CI checks complement them but cannot substitute for them.
 
 ## Included in the current technical draft
 
@@ -40,32 +40,39 @@ Protected development is intended to take place in a **private repository**. Pub
 - SQLite persistence for synthetic local testing only
 - Knowledge-item CRUD operations
 - Keyword search and lifecycle status filtering
-- Input validation
+- fail-closed environment-backed bearer authentication for `/api/v1/*`
+- input validation and provenance hashing
 - Docker and Docker Compose for local verification
-- Automated tests and GitHub Actions CI
-- Repository policy scanning for secrets and prohibited file types
+- automated tests and GitHub Actions CI
+- repository policy scanning for secrets and prohibited file types
+
+The bearer-token gate is a **pre-pilot local control only**. It is not enterprise SSO, RBAC, MFA, identity federation, user lifecycle management, access certification, or institutional authorization.
 
 ## Run locally
 
 The runtime capability gate is fail-closed. A direct local internal-test run must explicitly opt in to every gate stage that the local test has actually satisfied; missing gate variables keep `/health` blocked rather than inferring readiness.
 
+Create a strong temporary local API token without committing it to the repository:
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
+export ASA_API_BEARER_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
 export ASA_GATE_AVAILABLE=true ASA_GATE_ELIGIBLE=true ASA_GATE_AUTHORIZED=true ASA_GATE_CONNECTED=true ASA_GATE_EXECUTED=true ASA_GATE_TESTED=true ASA_GATE_EVIDENCED=true
 uvicorn app.main:app --reload
 ```
 
-Open `http://127.0.0.1:8000/docs`. These local gate flags describe only an explicitly prepared local internal-test context; they do not establish production readiness or institutional approval.
+Open `http://127.0.0.1:8000/docs`. Calls to `/api/v1/*` must include `Authorization: Bearer <token>`. The unauthenticated `/health` endpoint remains available only for bounded local health checks and does not return stored knowledge content. These local flags and the bearer token describe only an explicitly prepared local internal-test context; they do not establish production readiness or institutional approval.
 
 ## Run with Docker
 
 ```bash
+export ASA_API_BEARER_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
 docker compose up --build
 ```
 
-Docker Compose declares the same gate flags explicitly for local-only verification and binds the service to `127.0.0.1`.
+Docker Compose refuses to start the API service when `ASA_API_BEARER_TOKEN` is not supplied. It declares the same capability-gate flags explicitly for local-only verification and binds the service to `127.0.0.1`.
 
 ## Test
 
@@ -77,12 +84,13 @@ PYTHONPATH=. pytest -q
 
 ## Main endpoints
 
-- `GET /health`
-- `POST /api/v1/knowledge`
-- `GET /api/v1/knowledge?q=term&status=reviewed`
-- `GET /api/v1/knowledge/{id}`
-- `PATCH /api/v1/knowledge/{id}`
-- `DELETE /api/v1/knowledge/{id}`
+- `GET /health` — bounded unauthenticated local health check
+- `GET /api/v1/external/health` — authenticated and additionally fail-closed by external-connection controls
+- `POST /api/v1/knowledge` — authenticated
+- `GET /api/v1/knowledge?q=term&status=reviewed` — authenticated
+- `GET /api/v1/knowledge/{id}` — authenticated
+- `PATCH /api/v1/knowledge/{id}` — authenticated
+- `DELETE /api/v1/knowledge/{id}` — authenticated
 
 ## Project status
 
