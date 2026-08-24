@@ -5,6 +5,7 @@ services:
       - "127.0.0.1:8000:8000"
     environment:
       ASA_AOIP_DB_PATH: /data/asa_aoip.db
+      ASA_API_BEARER_TOKEN: ${ASA_API_BEARER_TOKEN:?Set ASA_API_BEARER_TOKEN before starting}
     volumes:
       - asa_data:/data
 volumes:
