@@ -38,27 +38,36 @@ Protected development is intended to take place in a **private repository**. Pub
 - SQLite persistence for synthetic local testing only
 - Knowledge-item CRUD operations
 - Keyword search and lifecycle status filtering
-- Input validation
+- fail-closed environment-backed bearer authentication for `/api/v1/*`
+- input validation and provenance hashing
 - Docker and Docker Compose for local verification
-- Automated tests and GitHub Actions CI
-- Repository policy scanning for secrets and prohibited file types
+- automated tests and GitHub Actions CI
+- repository policy scanning for secrets and prohibited file types
+
+The bearer-token gate is a **pre-pilot local control only**. It is not enterprise SSO, RBAC, identity federation, user lifecycle management, or institutional authorization.
 
 ## Run locally
 
+Create a strong temporary local token without committing it to the repository:
+
 ```bash
+export ASA_API_BEARER_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
 uvicorn app.main:app --reload
 ```
 
-Open `http://127.0.0.1:8000/docs`.
+Open `http://127.0.0.1:8000/docs`. Calls to `/api/v1/*` must include `Authorization: Bearer <token>`. The unauthenticated `/health` endpoint remains available for local container health checks and returns only bounded service/gate status.
 
 ## Run with Docker
 
 ```bash
+export ASA_API_BEARER_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
 docker compose up --build
 ```
+
+Docker Compose refuses to start the API service when `ASA_API_BEARER_TOKEN` is not supplied.
 
 ## Test
 
@@ -70,12 +79,13 @@ PYTHONPATH=. pytest -q
 
 ## Main endpoints
 
-- `GET /health`
-- `POST /api/v1/knowledge`
-- `GET /api/v1/knowledge?q=term&status=reviewed`
-- `GET /api/v1/knowledge/{id}`
-- `PATCH /api/v1/knowledge/{id}`
-- `DELETE /api/v1/knowledge/{id}`
+- `GET /health` — bounded unauthenticated health check
+- `GET /api/v1/external/health` — authenticated and additionally fail-closed by external-connection controls
+- `POST /api/v1/knowledge` — authenticated
+- `GET /api/v1/knowledge?q=term&status=reviewed` — authenticated
+- `GET /api/v1/knowledge/{id}` — authenticated
+- `PATCH /api/v1/knowledge/{id}` — authenticated
+- `DELETE /api/v1/knowledge/{id}` — authenticated
 
 ## Project status
 
