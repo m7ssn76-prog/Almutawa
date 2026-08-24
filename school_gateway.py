@@ -3,7 +3,7 @@
 
 Safety boundary:
 - Synthetic write-smoke sends synthetic data only.
-- Official Saudi Ministry of Education connectivity check reads public, machine-readable open data only.
+- Official Ministry of Education smoke test verifies the public Noor integration metadata surface only.
 - No real child/student records are sent or fetched.
 - Operational school integration still requires the school's authorized API endpoint, credentials, RBAC, privacy/retention rules, and technical approval.
 """
@@ -17,13 +17,10 @@ import sys
 from urllib.parse import urlsplit
 
 DEFAULT_SMOKE_URL = "https://postman-echo.com/post"
-OFFICIAL_MOE_OPEN_DATA_URL = (
-    "https://od.data.gov.sa/Data/ar/dataset/"
-    "fab7a04d-07cc-4502-aa58-b605707408fd/resource/"
-    "39753009-cc3f-4f27-94cd-94782f4b4bf3/download/"
-    "schools-classes-students-teachers-and-administrators-for-the-year-1443-.json"
+OFFICIAL_MOE_INTEGRATION_METADATA_URL = (
+    "https://mip.moe.gov.sa/noor/FederationMetadata/2007-06/FederationMetadata.xml"
 )
-OFFICIAL_MOE_HOST = "od.data.gov.sa"
+OFFICIAL_MOE_HOST = "mip.moe.gov.sa"
 
 
 def build_synthetic_payload() -> dict:
@@ -77,7 +74,7 @@ def post_json(url: str, payload: dict, timeout: int = 15) -> dict:
             body=body,
             headers={
                 "Content-Type": "application/json",
-                "User-Agent": "smart-education-gateway/1.2",
+                "User-Agent": "smart-education-gateway/1.3",
             },
         )
         response = connection.getresponse()
@@ -87,7 +84,7 @@ def post_json(url: str, payload: dict, timeout: int = 15) -> dict:
         connection.close()
 
 
-def get_public_resource(url: str, allowed_hosts: set[str], timeout: int = 20) -> dict:
+def get_public_resource(url: str, allowed_hosts: set[str], timeout: int = 15) -> dict:
     host, port, path = _validate_https_url(url, allowed_hosts=allowed_hosts)
     connection = _https_connection(host, port, timeout)
     try:
@@ -95,12 +92,12 @@ def get_public_resource(url: str, allowed_hosts: set[str], timeout: int = 20) ->
             "GET",
             path,
             headers={
-                "Accept": "application/json,text/plain,*/*",
-                "User-Agent": "smart-education-gateway/1.2",
+                "Accept": "application/xml,text/xml,text/plain,*/*",
+                "User-Agent": "smart-education-gateway/1.3",
             },
         )
         response = connection.getresponse()
-        sample = response.read(2048)
+        sample = response.read(8192)
         return {
             "status": response.status,
             "content_type": response.getheader("Content-Type") or "",
@@ -124,27 +121,38 @@ def live_smoke() -> dict:
     }
 
 
-def official_moe_open_data_smoke() -> dict:
+def official_moe_integration_smoke() -> dict:
     result = get_public_resource(
-        OFFICIAL_MOE_OPEN_DATA_URL,
+        OFFICIAL_MOE_INTEGRATION_METADATA_URL,
         allowed_hosts={OFFICIAL_MOE_HOST},
     )
     if not 200 <= result["status"] < 300:
-        raise RuntimeError(f"MOE open-data endpoint returned HTTP {result['status']}")
+        raise RuntimeError(f"MOE integration metadata returned HTTP {result['status']}")
     sample = result["sample"].lstrip()
     if not sample:
-        raise RuntimeError("MOE open-data endpoint returned an empty response")
-    looks_machine_readable = sample.startswith((b"{", b"[")) or "json" in result["content_type"].lower()
-    if not looks_machine_readable:
-        raise RuntimeError("MOE public endpoint did not look machine-readable")
+        raise RuntimeError("MOE integration metadata returned an empty response")
+    xml_like = sample.startswith(b"<") and (
+        b"EntityDescriptor" in sample or b"FederationMetadata" in sample or b"RoleDescriptor" in sample
+    )
+    if not xml_like:
+        raise RuntimeError("MOE integration endpoint did not return expected federation metadata")
     return {
-        "official_moe_public_data_connection": True,
+        "official_moe_integration_surface_connected": True,
         "source_host": OFFICIAL_MOE_HOST,
         "http_status": result["status"],
-        "machine_readable": True,
-        "public_open_data_only": True,
+        "metadata_verified": True,
         "contains_real_child_records": False,
         "operational_school_api_connected": False,
+    }
+
+
+def configured_school_api_status() -> dict:
+    endpoint = os.environ.get("SCHOOL_API_ENDPOINT")
+    token_present = bool(os.environ.get("SCHOOL_API_BEARER_TOKEN"))
+    return {
+        "configured": bool(endpoint),
+        "credential_present": token_present,
+        "ready_for_authorized_operational_probe": bool(endpoint and token_present),
     }
 
 
@@ -155,7 +163,7 @@ def self_test() -> dict:
         payload["contains_real_child_data"] is False,
         payload["student_id"].startswith("SYNTHETIC-"),
         _validate_https_url(DEFAULT_SMOKE_URL)[0] == "postman-echo.com",
-        _validate_https_url(OFFICIAL_MOE_OPEN_DATA_URL, {OFFICIAL_MOE_HOST})[0] == OFFICIAL_MOE_HOST,
+        _validate_https_url(OFFICIAL_MOE_INTEGRATION_METADATA_URL, {OFFICIAL_MOE_HOST})[0] == OFFICIAL_MOE_HOST,
     ]
     return {"passed": sum(checks), "total": len(checks), "all_passed": all(checks)}
 
@@ -165,7 +173,9 @@ if __name__ == "__main__":
         if "--live-smoke" in sys.argv:
             print(json.dumps(live_smoke(), indent=2))
         elif "--official-moe-smoke" in sys.argv:
-            print(json.dumps(official_moe_open_data_smoke(), indent=2))
+            print(json.dumps(official_moe_integration_smoke(), indent=2))
+        elif "--school-api-status" in sys.argv:
+            print(json.dumps(configured_school_api_status(), indent=2))
         else:
             print(json.dumps({"name": "School Gateway", "tests": self_test()}, indent=2))
     except (OSError, TimeoutError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
