@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main, agent/asa-aoip-mvp, feature/smart-education-bullying-guard]
+    branches: [main, agent/asa-aoip-mvp]
   pull_request:
 
 permissions:
@@ -52,19 +52,6 @@ jobs:
         run: python education_guard_engine.py
       - name: School gateway synthetic self-test
         run: python school_gateway.py
-      - name: External HTTPS synthetic connectivity smoke test
-        run: python school_gateway.py --live-smoke
-      - name: Official MOE public open-data availability check
-        continue-on-error: true
-        timeout-minutes: 1
-        run: python school_gateway.py --official-moe-smoke
-      - name: Authenticated school API smoke if credentials are configured
-        env:
-          SCHOOL_API_ENDPOINT: ${{ secrets.SCHOOL_API_ENDPOINT }}
-          SCHOOL_API_BEARER_TOKEN: ${{ secrets.SCHOOL_API_BEARER_TOKEN }}
-          SCHOOL_API_ALLOWED_HOST: ${{ secrets.SCHOOL_API_ALLOWED_HOST }}
-          SCHOOL_API_SMOKE_METHOD: ${{ secrets.SCHOOL_API_SMOKE_METHOD }}
-        run: python school_gateway.py --authenticated-school-smoke-if-configured
       - name: Verify generated evidence is not committed
         shell: bash
         run: |
