@@ -54,7 +54,9 @@ jobs:
         run: python school_gateway.py
       - name: External HTTPS synthetic connectivity smoke test
         run: python school_gateway.py --live-smoke
-      - name: Official MOE public open-data connectivity smoke test
+      - name: Official MOE public open-data availability check
+        continue-on-error: true
+        timeout-minutes: 1
         run: python school_gateway.py --official-moe-smoke
       - name: Verify generated evidence is not committed
         shell: bash
