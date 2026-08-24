@@ -143,7 +143,7 @@ app = FastAPI(
 )
 
 
-def _env_flag(name: str, default: bool = True) -> bool:
+def _env_flag(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
     if value is None:
         return default
@@ -153,9 +153,10 @@ def _env_flag(name: str, default: bool = True) -> bool:
 def local_runtime_gate() -> CapabilityGate:
     """Build the pre-pilot gate from explicit runtime controls.
 
-    Defaults preserve the existing local pre-pilot behavior. Deployments can
-    explicitly deny a control through environment variables. No external
-    authorization, connectivity, or production readiness is inferred here.
+    Every stage is fail-closed by default. A local or test runtime must opt in
+    explicitly to each stage it has actually satisfied. No authorization,
+    connectivity, testing, evidence, external approval, or production readiness
+    is inferred from missing environment variables.
     """
     return CapabilityGate(
         available=_env_flag("ASA_GATE_AVAILABLE"),

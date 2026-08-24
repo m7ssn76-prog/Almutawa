@@ -5,18 +5,37 @@ from fastapi.testclient import TestClient
 
 from app import db
 from app import main as main_module
-from app.capability_gate import CapabilityGate
+from app.capability_gate import CapabilityGate, GateState
 from app.main import app
+
+GATE_ENV_VARS = (
+    "ASA_GATE_AVAILABLE",
+    "ASA_GATE_ELIGIBLE",
+    "ASA_GATE_AUTHORIZED",
+    "ASA_GATE_CONNECTED",
+    "ASA_GATE_EXECUTED",
+    "ASA_GATE_TESTED",
+    "ASA_GATE_EVIDENCED",
+)
 
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch) -> Iterator[TestClient]:
     database_path = tmp_path / "test_asa_aoip.db"
     monkeypatch.setattr(db, "DB_PATH", database_path)
+    for name in GATE_ENV_VARS:
+        monkeypatch.setenv(name, "true")
     db.init_db()
 
     with TestClient(app) as test_client:
         yield test_client
+
+
+def test_runtime_gate_is_fail_closed_without_explicit_flags(monkeypatch) -> None:
+    for name in GATE_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+
+    assert main_module.local_runtime_gate().evaluate() is GateState.BLOCKED
 
 
 def test_health(client: TestClient) -> None:
