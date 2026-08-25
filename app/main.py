@@ -54,6 +54,7 @@ _MAX_AI_SCAN_ITEMS = 100
 _MAX_AI_EVIDENCE_CONTENT_CHARS = 4_000
 _DEFAULT_AI_MODEL = "gpt-5.6-sol"
 _ALLOWED_PROVIDER_QUESTION_ORIGINS = {"public", "synthetic"}
+_PROVENANCE_VERSION = "canonical-json-v1"
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -86,17 +87,22 @@ def _provenance_hash(
     data_origin: DataOrigin,
     approval_reference: str | None,
 ) -> str:
-    material = "\n".join(
-        [
-            title,
-            content,
-            source_type,
-            purpose,
-            sensitivity,
-            transformation_state,
-            data_origin,
-            approval_reference or "",
-        ]
+    """Hash a versioned canonical JSON representation of provenance fields."""
+    material = json.dumps(
+        {
+            "approval_reference": approval_reference,
+            "content": content,
+            "data_origin": data_origin,
+            "purpose": purpose,
+            "sensitivity": sensitivity,
+            "source_type": source_type,
+            "title": title,
+            "transformation_state": transformation_state,
+            "version": _PROVENANCE_VERSION,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(material).hexdigest()
 
@@ -428,6 +434,7 @@ def _evidence_packet(items: list[KnowledgeItem]) -> str:
             "transformation_state": item.transformation_state,
             "data_origin": item.data_origin,
             "provenance_hash": item.provenance_hash,
+            "provenance_version": item.provenance_version,
         }
         for item in items
     ]
@@ -610,6 +617,7 @@ async def evidence_answer(
             id=item_id,
             title=allowed[item_id].title,
             provenance_hash=allowed[item_id].provenance_hash,
+            provenance_version=allowed[item_id].provenance_version,
         )
         for item_id in evidence_ids
     ]
@@ -653,9 +661,9 @@ def create_knowledge(payload: KnowledgeCreate) -> KnowledgeItem:
             INSERT INTO knowledge_items (
                 title, content, status, source_type, purpose,
                 sensitivity, transformation_state, data_origin,
-                approval_reference, provenance_hash
+                approval_reference, provenance_hash, provenance_version
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 payload.title,
@@ -668,6 +676,7 @@ def create_knowledge(payload: KnowledgeCreate) -> KnowledgeItem:
                 payload.data_origin,
                 payload.approval_reference,
                 provenance_hash,
+                _PROVENANCE_VERSION,
             ),
         )
         conn.commit()
@@ -780,6 +789,7 @@ def update_knowledge(item_id: int, payload: KnowledgeUpdate) -> KnowledgeItem:
                 data_origin = ?,
                 approval_reference = ?,
                 provenance_hash = ?,
+                provenance_version = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
@@ -794,6 +804,7 @@ def update_knowledge(item_id: int, payload: KnowledgeUpdate) -> KnowledgeItem:
                 merged["data_origin"],
                 merged["approval_reference"],
                 provenance_hash,
+                _PROVENANCE_VERSION,
                 item_id,
             ),
         )
