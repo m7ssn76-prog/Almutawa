@@ -19,6 +19,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response, st
 from .capability_gate import CapabilityGate, GateState
 from .db import get_conn, init_db
 from .schemas import (
+    DataOrigin,
     EvidenceAgentOutput,
     EvidenceAnswerResponse,
     EvidenceCitation,
@@ -81,9 +82,20 @@ def _provenance_hash(
     purpose: str,
     sensitivity: Sensitivity,
     transformation_state: TransformationState,
+    data_origin: DataOrigin,
+    approval_reference: str | None,
 ) -> str:
     material = "\n".join(
-        [title, content, source_type, purpose, sensitivity, transformation_state]
+        [
+            title,
+            content,
+            source_type,
+            purpose,
+            sensitivity,
+            transformation_state,
+            data_origin,
+            approval_reference or "",
+        ]
     ).encode("utf-8")
     return hashlib.sha256(material).hexdigest()
 
@@ -96,8 +108,10 @@ def _guard_input(
     purpose: str,
     sensitivity: Sensitivity,
     transformation_state: TransformationState,
+    data_origin: DataOrigin,
+    approval_reference: str | None,
 ) -> str:
-    combined = f"{title}\n{content}"
+    combined = f"{title}\n{content}\n{approval_reference or ''}"
 
     if _contains_secret(combined):
         raise HTTPException(
@@ -109,6 +123,24 @@ def _guard_input(
         raise HTTPException(
             status_code=403,
             detail="Sensitive/restricted content is blocked from the pre-pilot knowledge path.",
+        )
+
+    if data_origin == "public" and sensitivity != "public":
+        raise HTTPException(
+            status_code=422,
+            detail="Public-origin content must be classified as public.",
+        )
+
+    if data_origin == "approved_low_sensitivity" and not approval_reference:
+        raise HTTPException(
+            status_code=422,
+            detail="Approved low-sensitivity content requires an approval reference.",
+        )
+
+    if data_origin != "approved_low_sensitivity" and approval_reference is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="Approval reference is only valid for approved low-sensitivity content.",
         )
 
     if _contains_prompt_injection(combined):
@@ -130,6 +162,8 @@ def _guard_input(
         purpose,
         sensitivity,
         transformation_state,
+        data_origin,
+        approval_reference,
     )
 
 
@@ -340,6 +374,7 @@ def _search_reviewed_public_evidence(question: str) -> list[KnowledgeItem]:
             FROM knowledge_items
             WHERE status = 'reviewed'
               AND sensitivity = 'public'
+              AND data_origin IN ('synthetic', 'public')
               AND transformation_state IN ('original', 'verified_against_original')
             ORDER BY updated_at DESC, id DESC
             LIMIT ?
@@ -367,6 +402,7 @@ def _evidence_packet(items: list[KnowledgeItem]) -> str:
             "content": item.content[:_MAX_AI_EVIDENCE_CONTENT_CHARS],
             "source_type": item.source_type,
             "transformation_state": item.transformation_state,
+            "data_origin": item.data_origin,
             "provenance_hash": item.provenance_hash,
         }
         for item in items
@@ -559,6 +595,8 @@ def create_knowledge(payload: KnowledgeCreate) -> KnowledgeItem:
         purpose=payload.purpose,
         sensitivity=payload.sensitivity,
         transformation_state=payload.transformation_state,
+        data_origin=payload.data_origin,
+        approval_reference=payload.approval_reference,
     )
 
     with get_conn() as conn:
@@ -566,9 +604,10 @@ def create_knowledge(payload: KnowledgeCreate) -> KnowledgeItem:
             """
             INSERT INTO knowledge_items (
                 title, content, status, source_type, purpose,
-                sensitivity, transformation_state, provenance_hash
+                sensitivity, transformation_state, data_origin,
+                approval_reference, provenance_hash
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 payload.title,
@@ -578,6 +617,8 @@ def create_knowledge(payload: KnowledgeCreate) -> KnowledgeItem:
                 payload.purpose,
                 payload.sensitivity,
                 payload.transformation_state,
+                payload.data_origin,
+                payload.approval_reference,
                 provenance_hash,
             ),
         )
@@ -631,18 +672,7 @@ def get_knowledge(item_id: int) -> KnowledgeItem:
     dependencies=[Depends(require_api_auth)],
 )
 def update_knowledge(item_id: int, payload: KnowledgeUpdate) -> KnowledgeItem:
-    if all(
-        value is None
-        for value in (
-            payload.title,
-            payload.content,
-            payload.status,
-            payload.source_type,
-            payload.purpose,
-            payload.sensitivity,
-            payload.transformation_state,
-        )
-    ):
+    if not payload.model_fields_set:
         raise HTTPException(status_code=400, detail="No changes supplied")
 
     with get_conn() as conn:
@@ -661,10 +691,16 @@ def update_knowledge(item_id: int, payload: KnowledgeUpdate) -> KnowledgeItem:
             "purpose",
             "sensitivity",
             "transformation_state",
+            "data_origin",
         ):
             value = getattr(payload, field)
             if value is not None:
                 merged[field] = value
+
+        if payload.data_origin is not None and payload.data_origin != "approved_low_sensitivity":
+            merged["approval_reference"] = None
+        elif "approval_reference" in payload.model_fields_set:
+            merged["approval_reference"] = payload.approval_reference
 
         provenance_hash = _guard_input(
             title=merged["title"],
@@ -673,6 +709,8 @@ def update_knowledge(item_id: int, payload: KnowledgeUpdate) -> KnowledgeItem:
             purpose=merged["purpose"],
             sensitivity=merged["sensitivity"],
             transformation_state=merged["transformation_state"],
+            data_origin=merged["data_origin"],
+            approval_reference=merged["approval_reference"],
         )
 
         conn.execute(
@@ -685,6 +723,8 @@ def update_knowledge(item_id: int, payload: KnowledgeUpdate) -> KnowledgeItem:
                 purpose = ?,
                 sensitivity = ?,
                 transformation_state = ?,
+                data_origin = ?,
+                approval_reference = ?,
                 provenance_hash = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
@@ -697,6 +737,8 @@ def update_knowledge(item_id: int, payload: KnowledgeUpdate) -> KnowledgeItem:
                 merged["purpose"],
                 merged["sensitivity"],
                 merged["transformation_state"],
+                merged["data_origin"],
+                merged["approval_reference"],
                 provenance_hash,
                 item_id,
             ),
