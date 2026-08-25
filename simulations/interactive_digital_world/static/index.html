@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Interactive Digital World</title>
+  <style>
+    body{font-family:system-ui,sans-serif;margin:0;background:#0b1220;color:#eef3f8}
+    main{max-width:1100px;margin:auto;padding:20px}.grid{display:grid;grid-template-columns:1.2fr .8fr;gap:18px}
+    .card{background:#121c2d;border:1px solid #26344b;border-radius:14px;padding:16px}
+    canvas{width:100%;max-width:600px;aspect-ratio:1;background:#0f2030;border-radius:12px;border:1px solid #35506e}
+    button{padding:10px 13px;margin:4px;border:0;border-radius:10px;cursor:pointer;font-weight:700}
+    .controls{display:flex;flex-wrap:wrap;gap:6px}.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .stat{background:#0c1625;padding:10px;border-radius:10px}.muted{opacity:.72;font-size:.9rem}
+    pre{white-space:pre-wrap;word-break:break-word;max-height:260px;overflow:auto;background:#09111d;padding:10px;border-radius:10px}
+    @media(max-width:800px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<main>
+  <h1>🌐 Interactive Digital World</h1>
+  <p class="muted">بيئة افتراضية تفاعلية — Internal Test Only — لا يوجد اتصال بمعدات أو مزرعة حقيقية.</p>
+  <div class="grid">
+    <section class="card">
+      <canvas id="world" width="500" height="500"></canvas>
+      <div class="controls">
+        <button onclick="cmd('MOVE_FORWARD')">⬆️ أمام</button>
+        <button onclick="cmd('MOVE_BACKWARD')">⬇️ خلف</button>
+        <button onclick="cmd('TURN_LEFT')">↩️ يسار</button>
+        <button onclick="cmd('TURN_RIGHT')">↪️ يمين</button>
+        <button onclick="cmd('STOP')">⏹️ توقف</button>
+        <button onclick="cmd('AUTO_ON')">🤖 Auto</button>
+        <button onclick="cmd('AUTO_OFF')">🎮 Manual</button>
+      </div>
+      <div class="controls">
+        <button onclick="cmd('LIGHT_ON')">💡 تشغيل اللمبة</button>
+        <button onclick="cmd('LIGHT_OFF')">🌑 إطفاء اللمبة</button>
+        <button onclick="cmd('SENSORS_ON')">📡 حساسات ON</button>
+        <button onclick="cmd('SENSORS_OFF')">📴 حساسات OFF</button>
+        <button onclick="cmd('IRRIGATION_ON')">💧 ري ON</button>
+        <button onclick="cmd('IRRIGATION_OFF')">🚱 ري OFF</button>
+        <button onclick="tick(10)">⏱️ +10 ثوانٍ</button>
+      </div>
+    </section>
+    <aside class="card">
+      <div class="stats" id="stats"></div>
+      <h3>🧠 الإدراك الذكي</h3><pre id="perception">—</pre>
+      <h3>📋 آخر حدث</h3><pre id="event">—</pre>
+    </aside>
+  </div>
+</main>
+<script>
+let state=null;
+async function load(){
+  state=await (await fetch('/api/state')).json(); draw();
+  const ev=await (await fetch('/api/events?limit=1')).json();
+  document.getElementById('event').textContent=ev.length?JSON.stringify(ev[0],null,2):'—';
+}
+async function cmd(command){
+  const r=await fetch('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command})});
+  state=await r.json(); draw();
+}
+async function tick(seconds){
+  const r=await fetch('/api/tick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seconds})});
+  state=await r.json(); draw(); await load();
+}
+function draw(){
+  if(!state)return; const c=document.getElementById('world'),x=c.getContext('2d');
+  x.clearRect(0,0,c.width,c.height); const n=state.world.size,cell=c.width/n;
+  x.strokeStyle='#213b53'; for(let i=0;i<=n;i++){x.beginPath();x.moveTo(i*cell,0);x.lineTo(i*cell,c.height);x.stroke();x.beginPath();x.moveTo(0,i*cell);x.lineTo(c.width,i*cell);x.stroke();}
+  const r=state.rover; x.font='22px sans-serif'; x.textAlign='center';x.textBaseline='middle';x.fillText('🤖',(r.x+.5)*cell,(r.y+.5)*cell);
+  const w=state.world,p=state.last_perception||{};
+  document.getElementById('stats').innerHTML=[
+    ['الموقع',`${r.x}, ${r.y}`],['البطارية',`${r.battery}%`],['الوضع',r.mode],['اللمبة',r.light_on?'ON':'OFF'],
+    ['الحساسات',r.sensors_on?'ON':'OFF'],['الحرارة',w.air_temperature],['رطوبة التربة',w.soil_moisture],['صحة النبات',w.plant_health],['خطر المرض الافتراضي',w.virtual_pathogen_risk],['Evidence',state.evidence_chain?.valid?'VALID':'CHECK']
+  ].map(v=>`<div class="stat"><b>${v[0]}</b><br>${v[1]}</div>`).join('');
+  document.getElementById('perception').textContent=JSON.stringify(p,null,2);
+}
+load(); setInterval(load,3000);
+</script>
+</body>
+</html>

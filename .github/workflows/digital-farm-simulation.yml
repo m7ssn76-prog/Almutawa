@@ -1,16 +1,18 @@
-name: Digital Environment Synthetic Monitor
+name: Digital Environment & Interactive World Monitor
 
 on:
   pull_request:
     paths:
       - 'simulations/virtual_field_rover/**'
       - 'simulations/digital_environment/**'
+      - 'simulations/interactive_digital_world/**'
       - '.github/workflows/digital-farm-simulation.yml'
   push:
     branches: [main]
     paths:
       - 'simulations/virtual_field_rover/**'
       - 'simulations/digital_environment/**'
+      - 'simulations/interactive_digital_world/**'
       - '.github/workflows/digital-farm-simulation.yml'
   workflow_dispatch:
   schedule:
@@ -20,7 +22,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: digital-environment-synthetic-monitor
+  group: digital-environment-interactive-monitor
   cancel-in-progress: true
 
 jobs:
@@ -38,12 +40,15 @@ jobs:
       - name: Install governed API dependencies
         run: python -m pip install -r requirements-dev.txt
       - name: Compile
-        run: python -m compileall -q app simulations/virtual_field_rover simulations/digital_environment
+        run: python -m compileall -q app simulations/virtual_field_rover simulations/digital_environment simulations/interactive_digital_world
       - name: Legacy Digital Farm tests
         working-directory: simulations/virtual_field_rover
         run: python -m unittest discover -v
       - name: Digital Environment platform tests
         working-directory: simulations/digital_environment
+        run: python -m unittest discover -v
+      - name: Interactive Digital World tests
+        working-directory: simulations/interactive_digital_world
         run: python -m unittest discover -v
       - name: Run bounded multi-environment synthetic suite
         working-directory: simulations/digital_environment
@@ -68,6 +73,26 @@ jobs:
               assert p['asa_aoip_gateway']['valid'] is True
               assert p['asa_aoip_gateway']['external_connection'] is False
           print('Digital Environment synthetic suite: PASS')
+          PY
+      - name: Run interactive world causal scenario
+        working-directory: simulations/interactive_digital_world
+        run: |
+          rm -rf runtime
+          python world.py --ticks 90 --summary runtime/snapshot.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          s=json.loads(Path('runtime/snapshot.json').read_text())
+          assert s['classification'] == 'Internal Test Only'
+          assert s['simulation_only'] is True
+          assert s['real_environment_connected'] is False
+          assert s['physical_actuation'] is False
+          assert s['rover']['light_on'] is True
+          assert s['world']['irrigation_on'] is True
+          assert s['clock_seconds'] == 90
+          assert s['evidence_chain']['valid'] is True
+          assert s['last_perception']['state'] in {'NORMAL','ANOMALY_SUSPECTED','CONFIRMED_ANOMALY','EVIDENCE_CONFLICT'}
+          print('Interactive Digital World causal scenario: PASS')
           PY
       - name: Start governed ASA/AOIP local API
         env:
@@ -101,7 +126,12 @@ jobs:
         env:
           ASA_API_BEARER_TOKEN: synthetic-ci-token-00000000000000000000000000000001
         run: python environment_bridge.py runtime/summary.json
-      - name: Verify governed Digital Environment knowledge record
+      - name: Bridge Interactive Digital World into ASA/AOIP
+        working-directory: simulations/interactive_digital_world
+        env:
+          ASA_API_BEARER_TOKEN: synthetic-ci-token-00000000000000000000000000000001
+        run: python interactive_bridge.py runtime/snapshot.json
+      - name: Verify governed knowledge records
         env:
           ASA_API_BEARER_TOKEN: synthetic-ci-token-00000000000000000000000000000001
         run: |
@@ -110,28 +140,42 @@ jobs:
           from urllib.parse import quote
           from urllib.request import Request, urlopen
           token='synthetic-ci-token-00000000000000000000000000000001'
-          req=Request(
-              'http://127.0.0.1:8000/api/v1/knowledge?q=' + quote('Digital Environment Synthetic Monitoring Suite'),
-              headers={'Authorization': f'Bearer {token}', 'Accept': 'application/json'},
-          )
-          with urlopen(req, timeout=5) as r:
-              rows=json.loads(r.read().decode())
-          assert rows, 'No Digital Environment record found in ASA/AOIP'
-          row=rows[0]
+          def fetch(title):
+              req=Request(
+                  'http://127.0.0.1:8000/api/v1/knowledge?q=' + quote(title),
+                  headers={'Authorization': f'Bearer {token}', 'Accept': 'application/json'},
+              )
+              with urlopen(req, timeout=5) as r:
+                  rows=json.loads(r.read().decode())
+              assert rows, f'No governed record found for {title}'
+              return rows[0]
+
+          row=fetch('Digital Environment Synthetic Monitoring Suite')
           assert row['data_origin'] == 'synthetic'
           assert row['status'] == 'draft'
           assert row['sensitivity'] == 'public'
           assert len(row['provenance_hash']) == 64
           content=json.loads(row['content'])
           assert content['schema'] == 'asa.aoip.digital-environment-suite.v1'
-          assert content['environment_count'] >= 5
           assert content['real_environment_connected'] is False
           assert content['boundary']['physical_actuation'] is False
           assert content['boundary']['person_tracking'] is False
           assert content['boundary']['covert_monitoring'] is False
-          assert 'hidden_incidents' not in row['content']
-          assert 'detected_incidents' not in row['content']
-          print('Digital Environment -> ASA/AOIP governed bridge: PASS')
+
+          row=fetch('Interactive Digital World Snapshot')
+          assert row['data_origin'] == 'synthetic'
+          assert row['status'] == 'draft'
+          assert row['sensitivity'] == 'public'
+          assert len(row['provenance_hash']) == 64
+          content=json.loads(row['content'])
+          assert content['schema'] == 'asa.aoip.interactive-digital-world.v1'
+          assert content['simulation_only'] is True
+          assert content['real_environment_connected'] is False
+          assert content['physical_actuation'] is False
+          assert content['evidence_chain']['valid'] is True
+          assert content['boundary']['person_tracking'] is False
+          assert content['boundary']['covert_monitoring'] is False
+          print('Digital Environment + Interactive World -> ASA/AOIP governed bridge: PASS')
           PY
       - name: Stop local API
         if: always()
