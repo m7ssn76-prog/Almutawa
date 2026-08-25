@@ -30,11 +30,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install governed API dependencies
+        run: python -m pip install -r requirements-dev.txt
       - name: Compile
-        run: python -m compileall -q simulations/virtual_field_rover
+        run: python -m compileall -q app simulations/virtual_field_rover
       - name: Unit tests
         working-directory: simulations/virtual_field_rover
-        run: python -m unittest -v test_monitor.py
+        run: python -m unittest discover -v
       - name: Bounded synthetic patrol
         working-directory: simulations/virtual_field_rover
         run: |
@@ -51,3 +53,63 @@ jobs:
           assert s['asa_aoip_gateway']['external_connection'] is False
           print('Digital farm synthetic monitor: PASS')
           PY
+      - name: Start governed ASA/AOIP local API
+        env:
+          ASA_API_BEARER_TOKEN: synthetic-ci-token-00000000000000000000000000000001
+          ASA_GATE_AVAILABLE: 'true'
+          ASA_GATE_ELIGIBLE: 'true'
+          ASA_GATE_AUTHORIZED: 'true'
+          ASA_GATE_CONNECTED: 'true'
+          ASA_GATE_EXECUTED: 'true'
+          ASA_GATE_TESTED: 'true'
+          ASA_GATE_EVIDENCED: 'true'
+        run: |
+          python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/asa-aoip.log 2>&1 &
+          echo $! > /tmp/asa-aoip.pid
+          python - <<'PY'
+          import time
+          from urllib.request import urlopen
+          for _ in range(40):
+              try:
+                  with urlopen('http://127.0.0.1:8000/health', timeout=1) as r:
+                      if r.status == 200:
+                          print('ASA/AOIP local API: READY')
+                          break
+              except Exception:
+                  time.sleep(0.25)
+          else:
+              raise SystemExit('ASA/AOIP local API failed to become ready')
+          PY
+      - name: Bridge digital farm evidence into ASA/AOIP
+        working-directory: simulations/virtual_field_rover
+        env:
+          ASA_API_BEARER_TOKEN: synthetic-ci-token-00000000000000000000000000000001
+        run: python asa_bridge.py runtime/summary.json
+      - name: Verify bridged knowledge record
+        env:
+          ASA_API_BEARER_TOKEN: synthetic-ci-token-00000000000000000000000000000001
+        run: |
+          python - <<'PY'
+          import json
+          from urllib.parse import quote
+          from urllib.request import Request, urlopen
+          token='synthetic-ci-token-00000000000000000000000000000001'
+          req=Request(
+              'http://127.0.0.1:8000/api/v1/knowledge?q=' + quote('Digital Farm Synthetic Monitoring Run'),
+              headers={'Authorization': f'Bearer {token}', 'Accept': 'application/json'},
+          )
+          with urlopen(req, timeout=5) as r:
+              rows=json.loads(r.read().decode())
+          assert rows, 'No bridged ASA/AOIP record found'
+          row=rows[0]
+          assert row['data_origin'] == 'synthetic'
+          assert row['status'] == 'draft'
+          assert row['sensitivity'] == 'public'
+          assert len(row['provenance_hash']) == 64
+          assert 'real_farm_connected' in row['content']
+          print('Digital Farm -> ASA/AOIP governed bridge: PASS')
+          PY
+      - name: Stop local API
+        if: always()
+        run: |
+          if [ -f /tmp/asa-aoip.pid ]; then kill "$(cat /tmp/asa-aoip.pid)" || true; fi
