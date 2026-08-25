@@ -43,6 +43,62 @@ The repository must not track:
 
 The `.gitignore` and automated repository-policy check enforce part of this rule. They do not replace human review.
 
+## Evidence Registry admissibility gate
+
+A source may support an asserted result only when the evidence record identifies, at minimum:
+
+- Evidence ID;
+- source title or stable identifier;
+- source location;
+- source owner, author, or controlling authority when known;
+- version, commit, revision, or other freshness marker;
+- approval state;
+- sensitivity classification;
+- data origin;
+- capture or verification time;
+- integrity reference such as SHA-256, commit SHA, workflow run, or equivalent reproducible identifier;
+- scope of what the evidence actually proves; and
+- evidence classification such as Verified, Internal Test Only, Unverified, Requires Original Source, or External Approval Required.
+
+If a required field is unknown, the source must not be silently promoted to authoritative evidence. The claim remains limited to the strongest supported classification.
+
+### Source precedence
+
+When records conflict, use the strongest current evidence in this order unless an authorized policy states otherwise:
+
+1. current authoritative source;
+2. approved original source;
+3. reproducible runtime or test evidence tied to a version or commit;
+4. historical snapshot;
+5. secondary summary.
+
+A newer date alone is not enough to override a more authoritative source.
+
+## P-004 data and review boundary
+
+For P-004, the public repository remains synthetic/public-safe. A future approved corpus must be controlled outside this public repository unless the exact material is explicitly cleared for public disclosure.
+
+The P-004 corpus approval package must identify each proposed source by title or identifier, Evidence ID, version, storage location, owner, approval state, sensitivity, and justification for inclusion.
+
+AI pre-review, synthetic closed-set checks, automated source mapping, or automated citation mapping are internal measurement aids only. They do **not** count as independent human review and do not change the official independent-human-review counter.
+
+## KPI data eligibility
+
+A metric must not be presented as an official KPI unless its underlying data is eligible for that use. At minimum, the KPI record must define:
+
+- KPI ID and name;
+- definition and formula;
+- data source;
+- measurement period;
+- baseline when required;
+- target or decision threshold when applicable;
+- accountable owner;
+- eligibility gate;
+- actual measured value; and
+- evidence reference.
+
+Synthetic or internal-test measurements must remain visibly separated from real-user, operational, or institutionally approved measurements.
+
 ## Before every commit or pull request
 
 The contributor must verify:
@@ -52,6 +108,9 @@ The contributor must verify:
 - [ ] No company, customer, employee, supplier, or project data is present.
 - [ ] No credentials, internal URLs, tenant identifiers, or connection strings are present.
 - [ ] No unapproved logo, trademark, or endorsement language is present.
+- [ ] Evidence claims identify their source, scope, version/freshness, and classification.
+- [ ] Internal-test metrics are not presented as official KPIs.
+- [ ] AI pre-review is not counted as independent human review.
 - [ ] The repository-policy check passes.
 - [ ] The change remains within Discovery / Pre-Pilot scope.
 
@@ -69,6 +128,10 @@ The contributor must verify:
 
 Synthetic development records may be retained only as needed for controlled testing and audit. Approved non-synthetic content must follow the written retention and deletion decision of its authorized owner.
 
+Evidence and audit records should retain only the minimum information required for reproducibility, provenance, decision traceability, and authorized review. Secrets, protected source content, or unnecessary personal data must not be copied into evidence records merely for convenience.
+
 ## Authority boundary
 
 This policy supports project control. It does not replace employer policies, contracts, privacy law, cybersecurity requirements, records obligations, or formal legal advice.
+
+Local implementation of these controls may close design or Internal Test Only gaps. It cannot close Data Owner, Privacy/DPIA, Records, InfoSec, Enterprise Architecture, Legal/IP, provider-contract, or production-authorization gates that require an authorized external decision.
