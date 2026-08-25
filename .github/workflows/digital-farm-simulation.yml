@@ -4,11 +4,21 @@ on:
   pull_request:
     paths:
       - 'simulations/virtual_field_rover/**'
+      - 'app/smart_farm.py'
+      - 'tests/test_smart_farm.py'
+      - 'docker-compose.yml'
+      - 'requirements.txt'
+      - 'requirements-dev.txt'
       - '.github/workflows/digital-farm-simulation.yml'
   push:
     branches: [main]
     paths:
       - 'simulations/virtual_field_rover/**'
+      - 'app/smart_farm.py'
+      - 'tests/test_smart_farm.py'
+      - 'docker-compose.yml'
+      - 'requirements.txt'
+      - 'requirements-dev.txt'
       - '.github/workflows/digital-farm-simulation.yml'
   workflow_dispatch:
   schedule:
@@ -26,13 +36,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: '3.12'
-      - name: Compile
-        run: python -m compileall -q simulations/virtual_field_rover
-      - name: Unit tests
+      - name: Install verification dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Compile Smart Farm and synthetic rover
+        run: python -m compileall -q app/smart_farm.py tests/test_smart_farm.py simulations/virtual_field_rover
+      - name: Smart Farm API safety tests
+        run: PYTHONPATH=. pytest -q tests/test_smart_farm.py
+      - name: Synthetic rover unit tests
         working-directory: simulations/virtual_field_rover
         run: python -m unittest -v test_monitor.py
       - name: Bounded synthetic patrol
