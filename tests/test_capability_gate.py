@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import sqlite3
 from collections.abc import Iterator
 from types import SimpleNamespace
 
@@ -138,7 +139,8 @@ def test_ai_path_returns_without_provider_call_when_public_evidence_is_missing(
 
     with db.get_conn() as conn:
         audit = conn.execute(
-            "SELECT question_hash, question_fingerprint_version, question_data_origin, status "
+            "SELECT question_hash, question_fingerprint_version, question_data_origin, status, "
+            "prev_event_hash, event_hash, event_integrity_version "
             "FROM ai_audit_events ORDER BY id DESC LIMIT 1"
         ).fetchone()
     assert audit is not None
@@ -152,6 +154,94 @@ def test_ai_path_returns_without_provider_call_when_public_evidence_is_missing(
     assert audit["question_fingerprint_version"] == "hmac-sha256-v1"
     assert audit["question_data_origin"] == "synthetic"
     assert audit["status"] == "insufficient_evidence"
+    assert audit["prev_event_hash"] == ""
+    assert len(audit["event_hash"]) == 64
+    assert audit["event_integrity_version"] == "hmac-sha256-chain-v1"
+    assert db.verify_ai_audit_chain()["ok"] is True
+
+
+def test_ai_audit_chain_links_events_and_detects_tampering(
+    ai_client: TestClient,
+) -> None:
+    first_response = _ask(ai_client, "first synthetic audit chain question")
+    second_response = _ask(ai_client, "second synthetic audit chain question")
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+
+    verified = db.verify_ai_audit_chain()
+    assert verified == {
+        "ok": True,
+        "legacy_events": 0,
+        "verified_events": 2,
+        "first_invalid_id": None,
+        "reason": "verified",
+    }
+
+    with db.get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, prev_event_hash, event_hash FROM ai_audit_events ORDER BY id"
+        ).fetchall()
+        assert rows[0]["prev_event_hash"] == ""
+        assert rows[1]["prev_event_hash"] == rows[0]["event_hash"]
+        conn.execute(
+            "UPDATE ai_audit_events SET status = 'tampered' WHERE id = ?",
+            (rows[0]["id"],),
+        )
+        conn.commit()
+
+    tampered = db.verify_ai_audit_chain()
+    assert tampered["ok"] is False
+    assert tampered["first_invalid_id"] == rows[0]["id"]
+    assert tampered["reason"] == "event_hash_mismatch"
+
+
+def test_ai_audit_legacy_rows_are_preserved_without_retroactive_chain(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    database_path = tmp_path / "legacy_asa_ai.db"
+    monkeypatch.setattr(db, "DB_PATH", database_path)
+    monkeypatch.setenv("ASA_AUDIT_HMAC_KEY", AUDIT_HMAC_MATERIAL)
+
+    conn = sqlite3.connect(database_path)
+    conn.execute(
+        """
+        CREATE TABLE ai_audit_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question_hash TEXT NOT NULL,
+            status TEXT NOT NULL,
+            model TEXT NOT NULL DEFAULT '',
+            evidence_ids TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO ai_audit_events (question_hash, status) VALUES (?, ?)",
+        ("legacy-question-digest", "historical"),
+    )
+    conn.commit()
+    conn.close()
+
+    db.init_db()
+    with db.get_conn() as migrated:
+        row = migrated.execute(
+            "SELECT question_fingerprint_version, question_data_origin, prev_event_hash, "
+            "event_hash, event_integrity_version FROM ai_audit_events WHERE id = 1"
+        ).fetchone()
+    assert row is not None
+    assert row["question_fingerprint_version"] == "sha256-v0"
+    assert row["question_data_origin"] == "unverified_legacy"
+    assert row["prev_event_hash"] == ""
+    assert row["event_hash"] == ""
+    assert row["event_integrity_version"] == "legacy-unchained-v0"
+    assert db.verify_ai_audit_chain() == {
+        "ok": True,
+        "legacy_events": 1,
+        "verified_events": 0,
+        "first_invalid_id": None,
+        "reason": "verified",
+    }
 
 
 def test_ai_path_excludes_reviewed_internal_evidence(
@@ -295,7 +385,8 @@ def test_ai_path_returns_structured_grounded_answer_and_audits_hash_only(
     with db.get_conn() as conn:
         audit = conn.execute(
             "SELECT question_hash, question_fingerprint_version, question_data_origin, "
-            "status, model, evidence_ids FROM ai_audit_events ORDER BY id DESC LIMIT 1"
+            "status, model, evidence_ids, event_hash, event_integrity_version "
+            "FROM ai_audit_events ORDER BY id DESC LIMIT 1"
         ).fetchone()
     assert audit is not None
     assert len(audit["question_hash"]) == 64
@@ -304,6 +395,9 @@ def test_ai_path_returns_structured_grounded_answer_and_audits_hash_only(
     assert audit["status"] == "answered"
     assert audit["model"] == "gpt-5.6-sol"
     assert audit["evidence_ids"] == str(evidence_id)
+    assert len(audit["event_hash"]) == 64
+    assert audit["event_integrity_version"] == "hmac-sha256-chain-v1"
+    assert db.verify_ai_audit_chain()["ok"] is True
 
 
 def test_ai_path_rejects_model_citation_outside_candidate_set(
