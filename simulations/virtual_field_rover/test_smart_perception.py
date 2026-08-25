@@ -1,7 +1,7 @@
 import math
 import unittest
 
-from smart_perception import smart_perception
+from smart_perception import apply_degraded_evidence_guard, smart_perception
 
 
 class SmartPerceptionTests(unittest.TestCase):
@@ -16,6 +16,7 @@ class SmartPerceptionTests(unittest.TestCase):
         self.assertEqual(result["anomaly_support"], 0)
         self.assertGreaterEqual(result["confidence"], 95)
         self.assertEqual(result["risk"], 0)
+        self.assertEqual(result["details"]["rejected"], {})
         self.assertFalse(result["details"]["autonomous_physical_actuation"])
 
     def test_single_outlier_becomes_evidence_conflict(self):
@@ -62,16 +63,8 @@ class SmartPerceptionTests(unittest.TestCase):
         )
         self.assertEqual(result["state"], "INSUFFICIENT_EVIDENCE")
         self.assertEqual(result["decision"], "REQUEST_MORE_DATA")
-
-    def test_invalid_reliability_fails_closed(self):
-        result = smart_perception(
-            {"T1": 61, "T2": 62},
-            baseline=61,
-            tolerance=5,
-            reliabilities={"T1": 1.2, "T2": 1.0},
-        )
-        self.assertEqual(result["state"], "CONFIGURATION_ERROR")
-        self.assertEqual(result["decision"], "FIX_CONFIGURATION")
+        self.assertIn("T2", result["details"]["rejected"])
+        self.assertIn("evidence_quality_warning", result)
 
     def test_invalid_tolerance_fails_closed(self):
         result = smart_perception(
@@ -80,15 +73,62 @@ class SmartPerceptionTests(unittest.TestCase):
             tolerance=0,
         )
         self.assertEqual(result["state"], "CONFIGURATION_ERROR")
+        self.assertEqual(result["decision"], "FIX_CONFIGURATION")
 
-    def test_boolean_sensor_value_is_not_treated_as_number(self):
+    def test_boolean_input_produces_degraded_normal(self):
         result = smart_perception(
             {"T1": True, "T2": 61, "T3": 62},
             baseline=61,
             tolerance=5,
         )
-        self.assertEqual(result["state"], "NORMAL")
-        self.assertIn("T1", result["details"]["invalid_sensors"])
+        self.assertEqual(result["state"], "DEGRADED_NORMAL")
+        self.assertEqual(result["decision"], "VERIFY_INPUTS / OBSERVE")
+        self.assertEqual(result["risk"], 0)
+        self.assertEqual(result["details"]["rejected"]["T1"]["field"], "value")
+
+    def test_negative_reliability_produces_degraded_normal(self):
+        result = smart_perception(
+            {"T1": 61, "T2": 62, "T3": 63},
+            baseline=61,
+            tolerance=5,
+            reliabilities={"T1": -0.2, "T2": 1.0, "T3": 1.0},
+        )
+        self.assertEqual(result["state"], "DEGRADED_NORMAL")
+        self.assertEqual(result["decision"], "VERIFY_INPUTS / OBSERVE")
+        self.assertEqual(result["details"]["rejected"]["T1"]["field"], "reliability")
+
+    def test_out_of_range_severity_produces_degraded_normal(self):
+        result = smart_perception(
+            {"T1": 61, "T2": 62, "T3": 63},
+            baseline=61,
+            tolerance=5,
+            severities={"T1": 9, "T2": 1, "T3": 1},
+        )
+        self.assertEqual(result["state"], "DEGRADED_NORMAL")
+        self.assertEqual(result["decision"], "VERIFY_INPUTS / OBSERVE")
+        self.assertEqual(result["details"]["rejected"]["T1"]["field"], "severity")
+
+    def test_rejected_input_does_not_erase_confirmed_risk(self):
+        result = smart_perception(
+            {"T1": True, "T2": 95, "T3": 94},
+            baseline=61,
+            tolerance=5,
+            severities={"T2": 5, "T3": 5},
+        )
+        self.assertEqual(result["state"], "CONFIRMED_ANOMALY")
+        self.assertEqual(result["risk"], 100)
+        self.assertEqual(result["decision"], "ESCALATE / HUMAN_APPROVAL")
+        self.assertIn("evidence_quality_warning", result)
+
+    def test_guard_is_idempotent_for_clean_results(self):
+        result = smart_perception(
+            {"T1": 61, "T2": 62},
+            baseline=61,
+            tolerance=5,
+        )
+        before = dict(result)
+        after = apply_degraded_evidence_guard(result)
+        self.assertEqual(after, before)
 
 
 if __name__ == "__main__":
