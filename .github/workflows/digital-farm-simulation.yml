@@ -100,7 +100,7 @@ jobs:
         working-directory: simulations/digital_environment
         env:
           ASA_API_BEARER_TOKEN: synthetic-ci-token-00000000000000000000000000000001
-        run: python asa_bridge.py runtime/summary.json
+        run: python environment_bridge.py runtime/summary.json
       - name: Verify governed Digital Environment knowledge record
         env:
           ASA_API_BEARER_TOKEN: synthetic-ci-token-00000000000000000000000000000001
