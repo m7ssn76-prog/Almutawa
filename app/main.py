@@ -23,6 +23,7 @@ from .schemas import (
     EvidenceAgentOutput,
     EvidenceAnswerResponse,
     EvidenceCitation,
+    EvidenceQuestionRequest,
     KnowledgeCreate,
     KnowledgeItem,
     KnowledgeUpdate,
@@ -49,12 +50,14 @@ _PROMPT_INJECTION_PATTERNS = (
 _DERIVED_SOURCE_TYPES: set[SourceType] = {"audio_transcript", "ocr_text", "translation"}
 _MAX_EXTERNAL_RESPONSE_BYTES = 65_536
 _MIN_API_TOKEN_LENGTH = 32
+_MIN_AUDIT_HMAC_KEY_LENGTH = 32
 _MAX_AI_EVIDENCE_ITEMS = 5
 _MAX_AI_SCAN_ITEMS = 100
 _MAX_AI_EVIDENCE_CONTENT_CHARS = 4_000
 _DEFAULT_AI_MODEL = "gpt-5.6-sol"
 _ALLOWED_PROVIDER_QUESTION_ORIGINS = {"public", "synthetic"}
 _PROVENANCE_VERSION = "canonical-json-v1"
+_QUESTION_FINGERPRINT_VERSION = "hmac-sha256-v1"
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -384,8 +387,23 @@ def _require_openai_prepilot_runtime() -> None:
         raise HTTPException(status_code=503, detail="OpenAI API authentication is not configured")
 
 
-def _question_hash(question: str) -> str:
-    return hashlib.sha256(question.strip().encode("utf-8")).hexdigest()
+def _audit_hmac_key() -> bytes:
+    raw = os.getenv("ASA_AUDIT_HMAC_KEY", "")
+    if len(raw) < _MIN_AUDIT_HMAC_KEY_LENGTH:
+        raise HTTPException(
+            status_code=503,
+            detail="AI audit HMAC key is not securely configured",
+        )
+    return raw.encode("utf-8")
+
+
+def _question_fingerprint(question: str) -> str:
+    """Create a keyed, versioned-compatible audit fingerprint for a question."""
+    return hmac.new(
+        _audit_hmac_key(),
+        question.strip().encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
 
 
 def _search_reviewed_public_evidence(question: str) -> list[KnowledgeItem]:
@@ -453,12 +471,14 @@ def _record_ai_audit(
         conn.execute(
             """
             INSERT INTO ai_audit_events (
-                question_hash, question_data_origin, status, model, evidence_ids
+                question_hash, question_fingerprint_version,
+                question_data_origin, status, model, evidence_ids
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 question_hash,
+                _QUESTION_FINGERPRINT_VERSION,
                 question_data_origin,
                 event_status,
                 model,
@@ -519,19 +539,20 @@ def external_health() -> dict[str, str | int]:
     return _external_probe()
 
 
-@app.get(
+@app.post(
     "/api/v1/ai/evidence-answer",
     response_model=EvidenceAnswerResponse,
     dependencies=[Depends(require_api_auth)],
 )
 async def evidence_answer(
-    q: str = Query(min_length=3, max_length=500),
+    payload: EvidenceQuestionRequest,
     question_data_origin_header: str | None = Header(
         default=None,
         alias="X-ASA-Question-Data-Origin",
     ),
 ) -> EvidenceAnswerResponse:
     """Answer only from reviewed public evidence under an explicit pre-pilot AI gate."""
+    q = payload.q
     if _contains_secret(q):
         raise HTTPException(status_code=422, detail="Sensitive secret detected in question")
     if _contains_prompt_injection(q):
@@ -540,7 +561,7 @@ async def evidence_answer(
     question_data_origin = _validated_provider_question_origin(
         question_data_origin_header
     )
-    question_hash = _question_hash(q)
+    question_hash = _question_fingerprint(q)
     candidates = _search_reviewed_public_evidence(q)
     if not candidates:
         _record_ai_audit(
