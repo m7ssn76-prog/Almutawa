@@ -26,12 +26,18 @@ def build_knowledge_payload(summary: dict) -> dict:
         raise ValueError("External connection must remain false")
 
     safe_content = {
-        "schema": "asa.aoip.digital-farm-run-summary.v1",
+        "schema": "asa.aoip.digital-farm-run-summary.v2",
         "classification": "Internal Test Only",
         "simulation_only": True,
         "real_farm_connected": False,
+        "adaptive_behavior": bool(summary.get("adaptive_behavior", False)),
         "cycles": int(summary.get("cycles", 0)),
+        "detection_rate": float(summary.get("detection_rate", 0.0)),
         "privacy_yields": int(summary.get("privacy_yields", 0)),
+        "privacy_reroutes": int(summary.get("privacy_reroutes", 0)),
+        "adaptive_revisits": int(summary.get("adaptive_revisits", 0)),
+        "investigation_triggers": int(summary.get("investigation_triggers", 0)),
+        "degraded_sensor_cycles": int(summary.get("degraded_sensor_cycles", 0)),
         "false_alerts": int(summary.get("false_alerts", 0)),
         "evidence_chain": summary.get("evidence_chain", {}),
         "asa_aoip_gateway": summary.get("asa_aoip_gateway", {}),
@@ -98,13 +104,19 @@ def main() -> None:
 
     token = os.getenv("ASA_API_BEARER_TOKEN", "")
     result = post_payload(payload, args.api_base, token)
-    print(json.dumps({
-        "bridge": "PASS",
-        "knowledge_id": result.get("id"),
-        "provenance_hash": result.get("provenance_hash"),
-        "data_origin": result.get("data_origin"),
-        "status": result.get("status"),
-    }, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {
+                "bridge": "PASS",
+                "knowledge_id": result.get("id"),
+                "provenance_hash": result.get("provenance_hash"),
+                "data_origin": result.get("data_origin"),
+                "status": result.get("status"),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":
