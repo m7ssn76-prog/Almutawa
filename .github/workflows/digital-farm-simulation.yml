@@ -1,0 +1,53 @@
+name: Digital Farm Synthetic Monitor
+
+on:
+  pull_request:
+    paths:
+      - 'simulations/virtual_field_rover/**'
+      - '.github/workflows/digital-farm-simulation.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'simulations/virtual_field_rover/**'
+      - '.github/workflows/digital-farm-simulation.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: digital-farm-synthetic-monitor
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile
+        run: python -m compileall -q simulations/virtual_field_rover
+      - name: Unit tests
+        working-directory: simulations/virtual_field_rover
+        run: python -m unittest -v test_monitor.py
+      - name: Bounded synthetic patrol
+        working-directory: simulations/virtual_field_rover
+        run: |
+          rm -rf runtime
+          python monitor.py --cycles 1200 --summary runtime/summary.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          s=json.loads(Path('runtime/summary.json').read_text())
+          assert s['simulation_only'] is True
+          assert s['real_farm_connected'] is False
+          assert s['evidence_chain']['valid'] is True
+          assert s['asa_aoip_gateway']['valid'] is True
+          assert s['asa_aoip_gateway']['external_connection'] is False
+          print('Digital farm synthetic monitor: PASS')
+          PY
