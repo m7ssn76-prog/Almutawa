@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import http.client
@@ -58,6 +59,14 @@ _DEFAULT_AI_MODEL = "gpt-5.6-sol"
 _ALLOWED_PROVIDER_QUESTION_ORIGINS = {"public", "synthetic"}
 _PROVENANCE_VERSION = "canonical-json-v1"
 _QUESTION_FINGERPRINT_VERSION = "hmac-sha256-v1"
+_DEFAULT_OPENAI_TIMEOUT_SECONDS = 30.0
+_MIN_OPENAI_TIMEOUT_SECONDS = 0.05
+_MAX_OPENAI_TIMEOUT_SECONDS = 60.0
+_DEFAULT_OPENAI_QUEUE_TIMEOUT_SECONDS = 1.0
+_MIN_OPENAI_QUEUE_TIMEOUT_SECONDS = 0.05
+_MAX_OPENAI_QUEUE_TIMEOUT_SECONDS = 5.0
+_DEFAULT_OPENAI_MAX_CONCURRENCY = 2
+_MAX_OPENAI_MAX_CONCURRENCY = 4
 
 
 class _PinnedHTTPSConnection(http.client.HTTPSConnection):
@@ -214,9 +223,66 @@ def _safe_item(row: Any) -> KnowledgeItem:
     return KnowledgeItem(**data)
 
 
+def _bounded_float_env(
+    name: str,
+    default: float,
+    minimum: float,
+    maximum: float,
+) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=f"Invalid {name} configuration") from exc
+    if not minimum <= value <= maximum:
+        raise HTTPException(
+            status_code=503,
+            detail=f"{name} must be between {minimum} and {maximum}",
+        )
+    return value
+
+
+def _openai_timeout_seconds() -> float:
+    return _bounded_float_env(
+        "ASA_OPENAI_TIMEOUT_SECONDS",
+        _DEFAULT_OPENAI_TIMEOUT_SECONDS,
+        _MIN_OPENAI_TIMEOUT_SECONDS,
+        _MAX_OPENAI_TIMEOUT_SECONDS,
+    )
+
+
+def _openai_queue_timeout_seconds() -> float:
+    return _bounded_float_env(
+        "ASA_OPENAI_QUEUE_TIMEOUT_SECONDS",
+        _DEFAULT_OPENAI_QUEUE_TIMEOUT_SECONDS,
+        _MIN_OPENAI_QUEUE_TIMEOUT_SECONDS,
+        _MAX_OPENAI_QUEUE_TIMEOUT_SECONDS,
+    )
+
+
+def _openai_max_concurrency() -> int:
+    raw = os.getenv("ASA_OPENAI_MAX_CONCURRENCY")
+    if raw is None:
+        return _DEFAULT_OPENAI_MAX_CONCURRENCY
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise RuntimeError("Invalid ASA_OPENAI_MAX_CONCURRENCY configuration") from exc
+    if not 1 <= value <= _MAX_OPENAI_MAX_CONCURRENCY:
+        raise RuntimeError(
+            f"ASA_OPENAI_MAX_CONCURRENCY must be between 1 and {_MAX_OPENAI_MAX_CONCURRENCY}"
+        )
+    return value
+
+
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(app_instance: FastAPI):
     init_db()
+    app_instance.state.ai_provider_semaphore = asyncio.Semaphore(
+        _openai_max_concurrency()
+    )
     yield
 
 
@@ -645,27 +711,66 @@ async def evidence_answer(
         f"{_evidence_packet(candidates)}"
     )
 
+    semaphore = getattr(app.state, "ai_provider_semaphore", None)
+    if semaphore is None:
+        raise HTTPException(status_code=503, detail="AI provider concurrency gate is unavailable")
+
     try:
-        result = await Runner.run(
-            agent,
-            prompt,
-            run_config=RunConfig(
-                tracing_disabled=True,
-                trace_include_sensitive_data=False,
-            ),
+        await asyncio.wait_for(
+            semaphore.acquire(),
+            timeout=_openai_queue_timeout_seconds(),
         )
-        output = result.final_output
-        if not isinstance(output, EvidenceAgentOutput):
-            output = EvidenceAgentOutput.model_validate(output)
-    except Exception as exc:
+    except TimeoutError as exc:
         _record_ai_audit(
             question_hash=question_hash,
             question_data_origin=question_data_origin,
-            event_status="provider_error",
+            event_status="provider_busy",
             model=model,
             evidence_ids=[],
         )
-        raise HTTPException(status_code=502, detail="OpenAI evidence-agent request failed") from exc
+        raise HTTPException(status_code=503, detail="AI provider concurrency limit reached") from exc
+
+    try:
+        try:
+            result = await asyncio.wait_for(
+                Runner.run(
+                    agent,
+                    prompt,
+                    run_config=RunConfig(
+                        tracing_disabled=True,
+                        trace_include_sensitive_data=False,
+                    ),
+                ),
+                timeout=_openai_timeout_seconds(),
+            )
+            output = result.final_output
+            if not isinstance(output, EvidenceAgentOutput):
+                output = EvidenceAgentOutput.model_validate(output)
+        except TimeoutError as exc:
+            _record_ai_audit(
+                question_hash=question_hash,
+                question_data_origin=question_data_origin,
+                event_status="provider_timeout",
+                model=model,
+                evidence_ids=[],
+            )
+            raise HTTPException(
+                status_code=504,
+                detail="OpenAI evidence-agent request timed out",
+            ) from exc
+        except HTTPException:
+            raise
+        except Exception as exc:
+            _record_ai_audit(
+                question_hash=question_hash,
+                question_data_origin=question_data_origin,
+                event_status="provider_error",
+                model=model,
+                evidence_ids=[],
+            )
+            raise HTTPException(status_code=502, detail="OpenAI evidence-agent request failed") from exc
+    finally:
+        semaphore.release()
 
     allowed = {item.id: item for item in candidates}
     evidence_ids = list(dict.fromkeys(output.evidence_ids))
