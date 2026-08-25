@@ -32,7 +32,7 @@ See [DATA_HANDLING.md](DATA_HANDLING.md), [PUBLICATION_POLICY.md](PUBLICATION_PO
 
 Protected development is intended to take place in a **private repository**. Public deployment, public demonstrations, source publication, or sharing with third parties is prohibited unless the owner completes a documented confidentiality, security, legal/IP, and data review.
 
-**Visibility verification note:** the repository owner reports that repository visibility has been changed to private. The connected repository metadata used during the current review had not yet reflected that change. Until GitHub repository metadata independently confirms `private`, continue to apply the same conservative data boundary. Branch protection/rulesets remain separate GitHub settings controls; CI checks complement them but cannot substitute for them.
+**Visibility verification note:** connected GitHub metadata checked on 25 August 2026 currently reports this repository as `public`. Until repository metadata independently reports `private`, treat all repository contents as publicly visible and keep only synthetic, lawful public, or explicitly approved low-sensitivity material here. Moving protected development to a private repository remains a separate repository-setting action. Branch protection/rulesets are also separate GitHub controls; CI checks complement them but do not substitute for them.
 
 ## Included in the current technical draft
 
