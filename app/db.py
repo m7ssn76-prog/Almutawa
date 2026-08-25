@@ -37,6 +37,18 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ai_audit_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                question_hash TEXT NOT NULL,
+                status TEXT NOT NULL,
+                model TEXT NOT NULL DEFAULT '',
+                evidence_ids TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
         _ensure_column(conn, "source_type", "TEXT NOT NULL DEFAULT 'text'")
         _ensure_column(conn, "purpose", "TEXT NOT NULL DEFAULT 'knowledge_management'")
         _ensure_column(conn, "sensitivity", "TEXT NOT NULL DEFAULT 'internal'")
