@@ -74,6 +74,9 @@ jobs:
             "run_attempt": "${GITHUB_RUN_ATTEMPT}",
             "tracked_file_count": ${tracked_count},
             "external_connection": false,
+            "external_connection_scope": "product_runtime_only",
+            "ci_github_api_connection": true,
+            "ci_artifact_upload": true,
             "classification": "Internal Test Only"
           }
           EOF
