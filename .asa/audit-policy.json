@@ -1,7 +1,7 @@
 {
   "system_id": "ASA-GITHUB-AUDIT-001",
   "name": "ASA GitHub Evidence Audit",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "repository": {
     "full_name": "m7ssn76-prog/Almutawa",
     "repository_id": 1305663312,
@@ -133,6 +133,167 @@
     ],
     "production_gate": "Production Deployment and Institutional GO remain Not Approved / Not Demonstrated until all applicable hard gates are independently evidenced and the authorized decision is recorded."
   },
+  "prepilot_execution_plan": {
+    "adopted_date": "2026-08-25",
+    "current_official_state": "Discovery / Pre-Pilot — Revise",
+    "target_intermediate_state": "Evidence-Complete / Approval-Ready Pre-Pilot",
+    "target_state_rule": "The target intermediate state means the project-controlled evidence, measurement methods, risk controls, reviewer package, security readiness material, and governance decision package are complete enough for authorized external review. It does not mean Pilot, Production, Institutional Approval, or Enterprise Readiness.",
+    "execution_strategy": "Run four workstreams in parallel where dependencies allow; do not wait for one external approval before preparing other approval-ready packages.",
+    "priority_sequence": [
+      "approved_p004_corpus",
+      "validation_sprint_human_review_baseline_users",
+      "independent_security_assessment",
+      "governance_decision_board",
+      "authorized_go_revise_stop"
+    ],
+    "workstreams": {
+      "A_validation": {
+        "scope": [
+          "independent_human_review_50",
+          "real_workflow_baseline",
+          "real_user_validation_or_satisfaction"
+        ],
+        "human_review_design": {
+          "required_official_reviews": 50,
+          "preferred_distribution": "5 independent reviewers x 10 primary cases, or an equivalent independent distribution approved for the actual review context",
+          "quality_control": "Use a bounded overlap sample where practical to measure reviewer agreement; disagreements should be adjudicated separately rather than overwritten.",
+          "review_dimensions": [
+            "source_support",
+            "citation_correctness",
+            "source_version_correctness",
+            "unsupported_claim_detection",
+            "correct_refusal_when_evidence_is_insufficient",
+            "source_conflict_detection",
+            "appropriate_human_escalation"
+          ],
+          "blindness_rule": "Where practical, reviewers should not be shown the AI pre-review judgment before recording their own assessment.",
+          "dry_run_rule": "Synthetic or public-data dry runs may validate the review procedure but do not increment the official independent human review counter."
+        },
+        "baseline_design": {
+          "comparison": "current_workflow_vs_p004",
+          "required_measurements": [
+            "time_to_evidence",
+            "time_to_verified_answer",
+            "task_completion",
+            "citation_correctness",
+            "source_version_correctness",
+            "rework_rate",
+            "escalation_rate",
+            "unsupported_answer_rate"
+          ],
+          "success_rule": "Speed alone is insufficient; interpretation must consider accuracy, evidence quality, and safety together."
+        },
+        "user_validation_design": {
+          "measure_system_not_people": true,
+          "candidate_dimensions": [
+            "ease_of_finding_information",
+            "clarity_of_source_and_citation",
+            "confidence_in_evidence_traceability",
+            "clarity_of_when_not_to_rely_on_the_answer",
+            "usefulness_compared_with_current_workflow"
+          ],
+          "prohibited_interpretation": "Do not use this validation to rank, score, or infer employee performance or expertise."
+        }
+      },
+      "B_data": {
+        "scope": "approved_p004_corpus",
+        "required_manifest_fields": [
+          "evidence_id",
+          "title",
+          "version",
+          "authorized_location",
+          "content_or_data_owner",
+          "approval_state",
+          "sensitivity",
+          "purpose",
+          "freshness",
+          "integrity_reference",
+          "inclusion_justification"
+        ],
+        "states": [
+          "Approved",
+          "Pending",
+          "Rejected",
+          "Superseded",
+          "Requires Original Source"
+        ],
+        "public_repository_boundary": "Protected or organizational corpus content must not be committed to this public-safe repository. Only metadata safe for public disclosure may be stored here; protected evidence requires a separately authorized private environment."
+      },
+      "C_security": {
+        "scope": "independent_vulnerability_assessment_or_penetration_test_when_required",
+        "internal_readiness_before_independent_review": [
+          "threat_model",
+          "attack_surface_inventory",
+          "abuse_cases",
+          "authentication_and_authorization_tests",
+          "input_validation_tests",
+          "api_security_review",
+          "secret_handling_review",
+          "dependency_and_supply_chain_review",
+          "logging_and_audit_review",
+          "container_security_review",
+          "data_exposure_review",
+          "ai_specific_attack_review"
+        ],
+        "independence_rule": "Project-owned CI, static scans, unit tests, Docker tests, and local security checks may establish readiness and reduce findings but do not count as an independent vulnerability assessment or penetration test.",
+        "closure_cycle": "independent_findings -> remediation -> retest -> evidence -> residual_risk_decision"
+      },
+      "D_governance": {
+        "strategy": "Prepare one common Pre-Pilot Governance Pack with a shared core and function-specific annexes rather than inconsistent separate narratives.",
+        "common_core": [
+          "problem_and_use_case",
+          "scope_and_boundaries",
+          "architecture",
+          "data_and_corpus",
+          "ai_model_and_provider",
+          "security",
+          "privacy",
+          "risks",
+          "validation",
+          "kpis",
+          "evidence",
+          "decision_requested"
+        ],
+        "annexes": {
+          "business_owner_or_sponsor": ["value_hypothesis", "scope", "accountability", "decision_rights", "risk_ownership"],
+          "data_owner": ["corpus", "versions", "permissions", "sensitivity", "retention"],
+          "information_security": ["architecture", "authentication", "threat_model", "security_testing", "logging"],
+          "privacy_dpia": ["personal_data", "purpose", "minimization", "retention", "access", "deletion", "provider_terms"],
+          "records": ["record_ownership", "retention", "deletion", "evidence_preservation"],
+          "enterprise_architecture": ["hosting", "integration_boundaries", "identity", "data_flows", "target_environment"],
+          "legal_ip_provider": ["ownership", "licensing", "provider_terms", "data_terms", "contractual_constraints"]
+        },
+        "authorized_decision_options": [
+          "Approve",
+          "Approve with Conditions",
+          "Revise",
+          "Reject"
+        ]
+      }
+    },
+    "lifecycle_ladder": [
+      "Local Internal Test",
+      "Controlled Sandbox",
+      "Authorized POC",
+      "Controlled Pilot",
+      "Pre-Production",
+      "Production"
+    ],
+    "pilot_candidate_gate": {
+      "required_conditions": [
+        "approved_corpus_evidenced",
+        "independent_human_review_completed",
+        "real_baseline_measured",
+        "real_user_validation_completed",
+        "required_independent_security_assessment_acceptable",
+        "applicable_governance_approvals_recorded",
+        "material_risks_mitigated_or_accepted_by_authorized_owner"
+      ],
+      "decision_state_when_met": "Ready for authorized Pilot Go/Revise/Stop review",
+      "authority_rule": "Meeting technical and evidence gates does not self-authorize a Pilot. The final Go/Revise/Stop decision remains with the authorized institutional decision-makers."
+    },
+    "anti_overclaim_rule": "No local test, AI review, dashboard score, readiness percentage, or project-owner declaration may substitute for independent human evidence or an external institutional approval where that gate requires one."
+  },
   "freshness_rule": {
     "dated_records": "historical_snapshot",
     "current_state_source": "live_verification_required",
@@ -156,7 +317,8 @@
     "classify_gap_closure_state",
     "evaluate_kpi_eligibility",
     "evaluate_evidence_admissibility",
-    "evaluate_hard_gates"
+    "evaluate_hard_gates",
+    "evaluate_pre_pilot_execution_readiness"
   ],
   "forbidden_operations": [
     "read_or_print_secrets",
@@ -167,11 +329,13 @@
     "treat_historical_state_as_current_without_live_verification",
     "count_ai_pre_review_as_independent_human_review",
     "promote_internal_test_metrics_to_official_kpis_without_eligibility_evidence",
-    "close_external_approval_gates_from_local_test_results"
+    "close_external_approval_gates_from_local_test_results",
+    "treat_readiness_percentage_as_authorized_go_decision"
   ],
   "status_gate": {
     "design": "may be documented",
     "internal_test_only": "requires successful workflow run evidence",
+    "evidence_complete_approval_ready_pre_pilot": "requires completion of all project-controlled preparation and explicit visibility of every remaining external or real-evidence gate; it is not an institutional approval",
     "production": "not approved",
     "institutional_approval": "external approval required"
   },
