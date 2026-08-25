@@ -94,13 +94,17 @@ Before a question can enter the provider path:
 
 - the caller must explicitly classify the question as `public` or `synthetic` using the governed request boundary;
 - missing or broader question classifications fail closed;
+- the question must be supplied in the authenticated POST request body, not in a URL query parameter; GET question transport is intentionally unsupported to reduce exposure through URLs, access logs, browser history, proxies, and similar metadata surfaces;
 - `ASA_OPENAI_PREPILOT_ENABLED=true` must be set for the controlled pre-pilot path;
 - `ASA_OPENAI_DATA_TERMS_CONFIRMED=true` must be set only after the responsible operator has reviewed the applicable current provider data terms for the intended test;
+- `ASA_AUDIT_HMAC_KEY` must be supplied through the approved environment/secret mechanism for new AI audit fingerprints and must not be committed to the repository;
 - the runtime API credential must be supplied through the approved environment/secret mechanism and must not be committed to the repository.
 
 The data-terms flag is an **operator confirmation gate only**. It is not Data Owner approval, Privacy/DPIA approval, InfoSec approval, contract-owner confirmation, enterprise authorization, or production approval.
 
-The local AI audit stores the SHA-256 hash of the question, the declared question data origin, event status, model identifier, and evidence IDs. It does not intentionally store the raw question text in the local audit record. Provider-side processing, retention, access, residency, abuse-monitoring, and training-use conditions remain governed by the provider terms and the organization's authorized review; this repository must not infer or overstate those conditions.
+The local AI audit does not intentionally store the raw question text. Historical pre-HMAC audit rows retain their prior `sha256-v0` semantics. New audit rows use a keyed `hmac-sha256-v1` question fingerprint plus the declared question data origin, event status, model identifier, and evidence IDs. The HMAC key is environment-backed and separate from the stored audit record. A keyed fingerprint reduces offline guessing risk compared with an unkeyed digest, but it is not encryption and must not be presented as irreversible anonymization.
+
+Provider-side processing, retention, access, residency, abuse-monitoring, and training-use conditions remain governed by the provider terms and the organization's authorized review; this repository must not infer or overstate those conditions.
 
 ## P-004 data and review boundary
 
@@ -138,7 +142,8 @@ The contributor must verify:
 - [ ] No unapproved logo, trademark, or endorsement language is present.
 - [ ] Evidence claims identify their source, scope, version/freshness, and classification.
 - [ ] Provenance hashes identify the construction version and legacy hashes are not silently promoted.
-- [ ] AI provider-path questions are explicitly classified public/synthetic and the provider data-terms gate is deliberately confirmed for the test.
+- [ ] AI provider-path questions are explicitly classified public/synthetic, sent in the POST body rather than URL query parameters, and the provider data-terms gate is deliberately confirmed for the test.
+- [ ] New AI audit fingerprints use the environment-backed keyed construction and do not persist the raw question text.
 - [ ] Internal-test metrics are not presented as official KPIs.
 - [ ] AI pre-review is not counted as independent human review.
 - [ ] The repository-policy check passes.
