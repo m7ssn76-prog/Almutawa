@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import hmac
 import sqlite3
@@ -36,6 +37,9 @@ def ai_client(tmp_path, monkeypatch) -> Iterator[TestClient]:
     monkeypatch.setenv("ASA_OPENAI_PREPILOT_ENABLED", "true")
     monkeypatch.setenv("ASA_OPENAI_DATA_TERMS_CONFIRMED", "true")
     monkeypatch.setenv("ASA_AUDIT_HMAC_KEY", AUDIT_HMAC_MATERIAL)
+    monkeypatch.setenv("ASA_OPENAI_MAX_CONCURRENCY", "2")
+    monkeypatch.setenv("ASA_OPENAI_TIMEOUT_SECONDS", "5")
+    monkeypatch.setenv("ASA_OPENAI_QUEUE_TIMEOUT_SECONDS", "1")
     monkeypatch.setenv(
         "OPENAI_API_KEY", "synthetic-provider-placeholder-value-000000000000000000"
     )
@@ -57,6 +61,20 @@ def _ask(client: TestClient, question: str, **kwargs):
         json={"q": question},
         **kwargs,
     )
+
+
+def _create_public_evidence(client: TestClient, title: str, content: str) -> int:
+    created = client.post(
+        "/api/v1/knowledge",
+        json={
+            "title": title,
+            "content": content,
+            "status": "reviewed",
+            "sensitivity": "public",
+        },
+    )
+    assert created.status_code == 201
+    return created.json()["id"]
 
 
 def test_gate_blocks_when_capability_is_unavailable() -> None:
@@ -358,16 +376,11 @@ def test_ai_path_is_fail_closed_when_feature_gate_is_disabled(
     ai_client: TestClient,
     monkeypatch,
 ) -> None:
-    created = ai_client.post(
-        "/api/v1/knowledge",
-        json={
-            "title": "Public cladding note",
-            "content": "Synthetic public cladding evidence",
-            "status": "reviewed",
-            "sensitivity": "public",
-        },
+    _create_public_evidence(
+        ai_client,
+        "Public cladding note",
+        "Synthetic public cladding evidence",
     )
-    assert created.status_code == 201
     monkeypatch.delenv("ASA_OPENAI_PREPILOT_ENABLED", raising=False)
 
     response = _ask(ai_client, "cladding evidence")
@@ -379,16 +392,11 @@ def test_ai_path_is_fail_closed_when_data_terms_gate_is_disabled(
     ai_client: TestClient,
     monkeypatch,
 ) -> None:
-    created = ai_client.post(
-        "/api/v1/knowledge",
-        json={
-            "title": "Public terms-gate note",
-            "content": "Synthetic public provider terms evidence",
-            "status": "reviewed",
-            "sensitivity": "public",
-        },
+    _create_public_evidence(
+        ai_client,
+        "Public terms-gate note",
+        "Synthetic public provider terms evidence",
     )
-    assert created.status_code == 201
     monkeypatch.delenv("ASA_OPENAI_DATA_TERMS_CONFIRMED", raising=False)
 
     response = _ask(ai_client, "provider terms evidence")
@@ -396,21 +404,95 @@ def test_ai_path_is_fail_closed_when_data_terms_gate_is_disabled(
     assert response.json()["detail"] == "OpenAI data-terms confirmation gate is closed"
 
 
+def test_ai_provider_timeout_is_bounded_and_audited(
+    ai_client: TestClient,
+    monkeypatch,
+) -> None:
+    _create_public_evidence(
+        ai_client,
+        "Public timeout evidence",
+        "Synthetic provider timeout evidence",
+    )
+    monkeypatch.setenv("ASA_OPENAI_TIMEOUT_SECONDS", "0.05")
+
+    async def slow_run(*args, **kwargs):
+        await asyncio.sleep(0.2)
+        raise AssertionError("Provider coroutine should be cancelled by local timeout")
+
+    monkeypatch.setattr(main_module.Runner, "run", slow_run)
+    response = _ask(ai_client, "provider timeout evidence")
+
+    assert response.status_code == 504
+    assert response.json()["detail"] == "OpenAI evidence-agent request timed out"
+    with db.get_conn() as conn:
+        audit = conn.execute(
+            "SELECT status FROM ai_audit_events ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    assert audit is not None
+    assert audit["status"] == "provider_timeout"
+    assert db.verify_ai_audit_chain()["ok"] is True
+
+
+def test_ai_provider_busy_queue_is_bounded_and_audited(
+    ai_client: TestClient,
+    monkeypatch,
+) -> None:
+    _create_public_evidence(
+        ai_client,
+        "Public busy evidence",
+        "Synthetic provider busy evidence",
+    )
+    monkeypatch.setenv("ASA_OPENAI_QUEUE_TIMEOUT_SECONDS", "0.05")
+
+    class SlowSemaphore:
+        async def acquire(self):
+            await asyncio.sleep(0.2)
+            return True
+
+        def release(self) -> None:
+            raise AssertionError("Unacquired semaphore must not be released")
+
+    async def fail_if_called(*args, **kwargs):
+        raise AssertionError("Provider must not run when concurrency queue times out")
+
+    original = app.state.ai_provider_semaphore
+    app.state.ai_provider_semaphore = SlowSemaphore()
+    monkeypatch.setattr(main_module.Runner, "run", fail_if_called)
+    try:
+        response = _ask(ai_client, "provider busy evidence")
+    finally:
+        app.state.ai_provider_semaphore = original
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "AI provider concurrency limit reached"
+    with db.get_conn() as conn:
+        audit = conn.execute(
+            "SELECT status FROM ai_audit_events ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    assert audit is not None
+    assert audit["status"] == "provider_busy"
+    assert db.verify_ai_audit_chain()["ok"] is True
+
+
+def test_openai_max_concurrency_rejects_out_of_range(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ASA_OPENAI_MAX_CONCURRENCY", "5")
+    with pytest.raises(RuntimeError, match="ASA_OPENAI_MAX_CONCURRENCY"):
+        main_module._openai_max_concurrency()
+
+
 def test_ai_path_returns_structured_grounded_answer_and_audits_hash_only(
     ai_client: TestClient,
     monkeypatch,
 ) -> None:
-    created = ai_client.post(
-        "/api/v1/knowledge",
-        json={
-            "title": "Public cladding note",
-            "content": "Synthetic public cladding evidence",
-            "status": "reviewed",
-            "sensitivity": "public",
-        },
+    evidence_id = _create_public_evidence(
+        ai_client,
+        "Public cladding note",
+        "Synthetic public cladding evidence",
     )
-    assert created.status_code == 201
-    evidence_id = created.json()["id"]
+    created = ai_client.get(f"/api/v1/knowledge/{evidence_id}")
+    assert created.status_code == 200
     assert created.json()["provenance_version"] == "canonical-json-v1"
 
     async def fake_run(agent, prompt, run_config):
@@ -462,16 +544,11 @@ def test_ai_path_rejects_model_citation_outside_candidate_set(
     ai_client: TestClient,
     monkeypatch,
 ) -> None:
-    created = ai_client.post(
-        "/api/v1/knowledge",
-        json={
-            "title": "Public cladding note",
-            "content": "Synthetic public cladding evidence",
-            "status": "reviewed",
-            "sensitivity": "public",
-        },
+    _create_public_evidence(
+        ai_client,
+        "Public cladding note",
+        "Synthetic public cladding evidence",
     )
-    assert created.status_code == 201
 
     async def fake_run(agent, prompt, run_config):
         return SimpleNamespace(

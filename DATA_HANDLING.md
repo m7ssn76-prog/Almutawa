@@ -102,6 +102,17 @@ Before a question can enter the provider path:
 
 The data-terms flag is an **operator confirmation gate only**. It is not Data Owner approval, Privacy/DPIA approval, InfoSec approval, contract-owner confirmation, enterprise authorization, or production approval.
 
+### Local provider runtime bounds
+
+The pre-pilot application also bounds local use of the provider path so a valid request cannot consume local provider capacity indefinitely or without a concurrency ceiling.
+
+- `ASA_OPENAI_MAX_CONCURRENCY` defaults to `2` and is accepted only in the range `1`–`4`; an invalid value fails application startup rather than silently becoming unbounded.
+- `ASA_OPENAI_QUEUE_TIMEOUT_SECONDS` defaults to `1` second and is bounded to `0.05`–`5` seconds. A request that cannot obtain a local provider slot within that window fails closed and records `provider_busy` in the governed AI audit.
+- `ASA_OPENAI_TIMEOUT_SECONDS` defaults to `30` seconds and is bounded to `0.05`–`60` seconds. A local provider coroutine that exceeds this window is cancelled by the application task boundary, the request returns a timeout response, and the audit records `provider_timeout`.
+- The semaphore is created with the FastAPI application lifespan and limits provider calls **per running application process**.
+
+These controls are local pre-pilot resource bounds only. They are not a distributed/global rate limiter, provider SLA, enterprise capacity policy, guaranteed remote cancellation, billing guarantee, or proof that a provider stopped all downstream work at the same instant the local coroutine was cancelled. Stronger multi-instance admission control and enterprise traffic governance remain future or external controls when required.
+
 The local AI audit does not intentionally store the raw question text. Historical pre-HMAC audit rows retain their prior `sha256-v0` semantics. New audit rows use a keyed `hmac-sha256-v1` question fingerprint plus the declared question data origin, event status, model identifier, and evidence IDs. The HMAC key is environment-backed and separate from the stored audit record. A keyed fingerprint reduces offline guessing risk compared with an unkeyed digest, but it is not encryption and must not be presented as irreversible anonymization.
 
 New AI audit events are linked through a versioned `hmac-sha256-chain-v1` integrity chain. Each chained event protects its previous event hash, question fingerprint metadata, declared data origin, status, model identifier, evidence IDs, and stored creation time. The chain key is derived from the environment-backed audit HMAC material using a separate domain, so the event-chain construction is cryptographically separated from the question-fingerprint construction. Existing records that predate chaining remain `legacy-unchained-v0`; they are not silently rewritten into a historical chain.
@@ -149,6 +160,7 @@ The contributor must verify:
 - [ ] Evidence claims identify their source, scope, version/freshness, and classification.
 - [ ] Provenance hashes identify the construction version and legacy hashes are not silently promoted.
 - [ ] AI provider-path questions are explicitly classified public/synthetic, sent in the POST body rather than URL query parameters, and the provider data-terms gate is deliberately confirmed for the test.
+- [ ] AI provider concurrency, queue-wait, and request-runtime bounds remain explicit, bounded, fail-closed, and covered by tests.
 - [ ] New AI audit fingerprints use the environment-backed keyed construction and do not persist the raw question text.
 - [ ] New AI audit events form a verifiable keyed chain, while historical pre-chain records remain explicitly legacy.
 - [ ] The signed AI audit checkpoint matches the current chained-event count, last ID, and chain head during controlled verification.
