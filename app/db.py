@@ -29,7 +29,7 @@ def init_db() -> None:
                 purpose TEXT NOT NULL DEFAULT 'knowledge_management',
                 sensitivity TEXT NOT NULL DEFAULT 'internal',
                 transformation_state TEXT NOT NULL DEFAULT 'original',
-                data_origin TEXT NOT NULL DEFAULT 'synthetic',
+                data_origin TEXT NOT NULL DEFAULT 'unverified_legacy',
                 approval_reference TEXT,
                 provenance_hash TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -41,7 +41,9 @@ def init_db() -> None:
         _ensure_column(conn, "purpose", "TEXT NOT NULL DEFAULT 'knowledge_management'")
         _ensure_column(conn, "sensitivity", "TEXT NOT NULL DEFAULT 'internal'")
         _ensure_column(conn, "transformation_state", "TEXT NOT NULL DEFAULT 'original'")
-        _ensure_column(conn, "data_origin", "TEXT NOT NULL DEFAULT 'synthetic'")
+        # A pre-existing row has no independently verified origin. Mark it
+        # unverified instead of silently promoting it to synthetic/public/approved.
+        _ensure_column(conn, "data_origin", "TEXT NOT NULL DEFAULT 'unverified_legacy'")
         _ensure_column(conn, "approval_reference", "TEXT")
         _ensure_column(conn, "provenance_hash", "TEXT NOT NULL DEFAULT ''")
         conn.commit()
