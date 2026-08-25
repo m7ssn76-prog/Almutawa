@@ -408,9 +408,11 @@ def create_knowledge(payload: KnowledgeCreate) -> KnowledgeItem:
 def list_knowledge(
     q: str | None = Query(default=None, max_length=200),
     status_filter: Status | None = Query(default=None, alias="status"),
+    limit: int = Query(default=50, ge=1, le=100),
+    before_id: int | None = Query(default=None, ge=1),
 ) -> list[KnowledgeItem]:
     sql = "SELECT * FROM knowledge_items WHERE 1=1"
-    params: list[str] = []
+    params: list[str | int] = []
     if q:
         sql += " AND (title LIKE ? OR content LIKE ?)"
         term = f"%{q}%"
@@ -418,7 +420,11 @@ def list_knowledge(
     if status_filter:
         sql += " AND status = ?"
         params.append(status_filter)
-    sql += " ORDER BY id DESC"
+    if before_id is not None:
+        sql += " AND id < ?"
+        params.append(before_id)
+    sql += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
     with get_conn() as conn:
         rows = conn.execute(sql, params).fetchall()
     return [_safe_item(row) for row in rows]
