@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
+
+from .anti_fabrication import render_claims
 
 # Pre-pilot API states only. "approved" is intentionally excluded until
 # authenticated RBAC and an authorized approval workflow are implemented.
@@ -25,6 +28,12 @@ DataOrigin = Literal[
 ProvenanceVersion = Literal["legacy-v0", "canonical-json-v1"]
 EvidenceAnswerStatus = Literal["answered", "insufficient_evidence"]
 ClaimStatus = Literal["verified", "inference", "unverified", "conflict"]
+
+_EXECUTION_CLAIM_RE = re.compile(
+    r"(?:\b(?:implemented|executed|merged|deployed|connected|passed|succeeded|successful|running|production)\b|"
+    r"(?:تم|نُفذ|نفذ|اشتغل|شغّال|نجح|دُمج|دمج|نشر|متصل|تشغيل|إنتاجي))",
+    re.IGNORECASE,
+)
 
 
 class KnowledgeCreate(BaseModel):
@@ -85,16 +94,61 @@ class EvidenceQuestionRequest(BaseModel):
 
 
 class EvidenceClaim(BaseModel):
-    text: str = Field(min_length=1, max_length=1200)
-    status: ClaimStatus
-    evidence_ids: list[int] = Field(default_factory=list, max_length=10)
+    text: str = Field(
+        min_length=1,
+        max_length=1200,
+        description="One atomic claim only; do not combine unrelated facts.",
+    )
+    status: ClaimStatus = Field(
+        description="verified for direct evidence, inference for explicit reasoning, otherwise unverified/conflict."
+    )
+    evidence_ids: list[int] = Field(
+        default_factory=list,
+        max_length=10,
+        description="IDs from the supplied evidence packet that support this exact claim.",
+    )
 
 
 class EvidenceAgentOutput(BaseModel):
     status: EvidenceAnswerStatus
-    answer: str = Field(min_length=1, max_length=4000)
+    answer: str = Field(
+        min_length=1,
+        max_length=4000,
+        description="This field is normalized server-side from claims; do not introduce facts outside claims.",
+    )
     evidence_ids: list[int] = Field(default_factory=list, max_length=10)
-    claims: list[EvidenceClaim] = Field(default_factory=list, max_length=12)
+    claims: list[EvidenceClaim] = Field(
+        default_factory=list,
+        max_length=12,
+        description="Claim-level evidence map. Required for answered output.",
+    )
+
+    @model_validator(mode="after")
+    def enforce_claim_level_grounding(self) -> "EvidenceAgentOutput":
+        if self.status == "insufficient_evidence":
+            self.evidence_ids = []
+            self.claims = []
+            self.answer = "Insufficient reviewed evidence / لا يوجد دليل مُراجع كافٍ."
+            return self
+
+        if not self.claims:
+            raise ValueError("answered output requires claim-level evidence mapping")
+
+        used: list[int] = []
+        for claim in self.claims:
+            if claim.status in {"unverified", "conflict"}:
+                raise ValueError("answered output cannot contain unverified/conflict claims")
+            if not claim.evidence_ids:
+                raise ValueError("every answered claim requires evidence IDs")
+            if _EXECUTION_CLAIM_RE.search(claim.text) and claim.status != "verified":
+                raise ValueError("execution/state claims must be verified, not inferred")
+            used.extend(claim.evidence_ids)
+
+        # Do not trust a model-generated global citation list or wrapper prose.
+        # Derive both strictly from the per-claim map.
+        self.evidence_ids = list(dict.fromkeys(used))
+        self.answer = render_claims(self.claims)
+        return self
 
 
 class EvidenceCitation(BaseModel):
