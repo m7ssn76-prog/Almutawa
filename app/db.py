@@ -6,18 +6,42 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-DB_PATH = Path(os.getenv("ASA_AOIP_DB_PATH", "/data/asa_aoip.db" if os.getenv("RENDER") else "asa_aoip.db"))
+DB_PATH = Path(
+    os.getenv(
+        "ASA_AOIP_DB_PATH",
+        "/data/asa_aoip.db" if os.getenv("RENDER") else "asa_aoip.db",
+    )
+)
+_SQLITE_TIMEOUT_SECONDS = 5.0
+_SQLITE_BUSY_TIMEOUT_MS = 5_000
+
+
+def _connect() -> sqlite3.Connection:
+    """Open a bounded SQLite connection with explicit safety/durability controls."""
+    conn = sqlite3.connect(DB_PATH, timeout=_SQLITE_TIMEOUT_SECONDS)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute(f"PRAGMA busy_timeout = {_SQLITE_BUSY_TIMEOUT_MS}")
+    conn.execute("PRAGMA synchronous = FULL")
+    return conn
 
 
 def _ensure_column(conn: sqlite3.Connection, name: str, definition: str) -> None:
-    columns = {row[1] for row in conn.execute("PRAGMA table_info(knowledge_items)").fetchall()}
+    columns = {
+        row[1] for row in conn.execute("PRAGMA table_info(knowledge_items)").fetchall()
+    }
     if name not in columns:
         conn.execute(f"ALTER TABLE knowledge_items ADD COLUMN {name} {definition}")
 
 
 def init_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(DB_PATH) as conn:
+    conn = _connect()
+    try:
+        journal_mode = conn.execute("PRAGMA journal_mode = WAL").fetchone()[0]
+        if str(journal_mode).lower() != "wal":
+            raise RuntimeError("SQLite WAL mode could not be enabled")
+
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS knowledge_items (
@@ -55,16 +79,19 @@ def init_db() -> None:
         _ensure_column(conn, "transformation_state", "TEXT NOT NULL DEFAULT 'original'")
         # A pre-existing row has no independently verified origin. Mark it
         # unverified instead of silently promoting it to synthetic/public/approved.
-        _ensure_column(conn, "data_origin", "TEXT NOT NULL DEFAULT 'unverified_legacy'")
+        _ensure_column(
+            conn, "data_origin", "TEXT NOT NULL DEFAULT 'unverified_legacy'"
+        )
         _ensure_column(conn, "approval_reference", "TEXT")
         _ensure_column(conn, "provenance_hash", "TEXT NOT NULL DEFAULT ''")
         conn.commit()
+    finally:
+        conn.close()
 
 
 @contextmanager
 def get_conn() -> Iterator[sqlite3.Connection]:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = _connect()
     try:
         yield conn
     finally:
