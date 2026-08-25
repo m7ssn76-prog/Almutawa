@@ -49,5 +49,10 @@ jobs:
           assert s['evidence_chain']['valid'] is True
           assert s['asa_aoip_gateway']['valid'] is True
           assert s['asa_aoip_gateway']['external_connection'] is False
+          assert sum(s['flexibility_modes'].values()) == s['cycles']
+          assert s['protected_storage']['authorized_access_only'] is True
+          assert s['protected_storage']['hazardous_materials_allowed'] is False
+          assert s['openai_advisory']['external_call_made'] is False
+          assert s['openai_advisory']['autonomous_physical_actuation'] is False
           print('Digital farm synthetic monitor: PASS')
           PY
