@@ -109,6 +109,36 @@ def test_ai_path_excludes_reviewed_internal_evidence(
     assert response.json()["status"] == "insufficient_evidence"
 
 
+def test_ai_path_excludes_approved_low_sensitivity_origin(
+    ai_client: TestClient,
+    monkeypatch,
+) -> None:
+    created = ai_client.post(
+        "/api/v1/knowledge",
+        json={
+            "title": "Approved cladding note",
+            "content": "Synthetic cladding approval-path evidence",
+            "status": "reviewed",
+            "sensitivity": "public",
+            "data_origin": "approved_low_sensitivity",
+            "approval_reference": "SYNTHETIC-APPROVAL-001",
+        },
+    )
+    assert created.status_code == 201
+
+    async def fail_if_called(*args, **kwargs):
+        raise AssertionError("Provider must not receive approved low-sensitivity evidence")
+
+    monkeypatch.setattr(main_module.Runner, "run", fail_if_called)
+    response = ai_client.get(
+        "/api/v1/ai/evidence-answer",
+        params={"q": "cladding approval evidence"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "insufficient_evidence"
+
+
 def test_ai_path_is_fail_closed_when_feature_gate_is_disabled(
     ai_client: TestClient,
     monkeypatch,
@@ -151,6 +181,8 @@ def test_ai_path_returns_structured_grounded_answer_and_audits_hash_only(
 
     async def fake_run(agent, prompt, run_config):
         assert "Synthetic public cladding evidence" in prompt
+        assert '"data_origin":"synthetic"' in prompt
+        assert "approval_reference" not in prompt
         assert run_config.tracing_disabled is True
         assert agent.model_settings.store is False
         return SimpleNamespace(
