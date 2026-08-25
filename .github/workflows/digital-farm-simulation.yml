@@ -40,7 +40,7 @@ jobs:
       - name: Unit tests
         working-directory: simulations/virtual_field_rover
         run: python -m unittest discover -v
-      - name: Bounded synthetic patrol
+      - name: Bounded adaptive synthetic patrol
         working-directory: simulations/virtual_field_rover
         run: |
           rm -rf runtime
@@ -51,10 +51,15 @@ jobs:
           s=json.loads(Path('runtime/summary.json').read_text())
           assert s['simulation_only'] is True
           assert s['real_farm_connected'] is False
+          assert s['adaptive_behavior'] is True
+          assert s['privacy_yields'] > 0
+          assert s['privacy_reroutes'] > 0
+          assert s['adaptive_revisits'] > 0
+          assert s['degraded_sensor_cycles'] > 0
           assert s['evidence_chain']['valid'] is True
           assert s['asa_aoip_gateway']['valid'] is True
           assert s['asa_aoip_gateway']['external_connection'] is False
-          print('Digital farm synthetic monitor: PASS')
+          print('Digital farm adaptive synthetic behavior: PASS')
           PY
       - name: Start governed ASA/AOIP local API
         env:
@@ -83,12 +88,12 @@ jobs:
           else:
               raise SystemExit('ASA/AOIP local API failed to become ready')
           PY
-      - name: Bridge digital farm evidence into ASA/AOIP
+      - name: Bridge digital farm behavior into ASA/AOIP
         working-directory: simulations/virtual_field_rover
         env:
           ASA_API_BEARER_TOKEN: synthetic-ci-token-00000000000000000000000000000001
         run: python asa_bridge.py runtime/summary.json
-      - name: Verify bridged knowledge record
+      - name: Verify bridged adaptive knowledge record
         env:
           ASA_API_BEARER_TOKEN: synthetic-ci-token-00000000000000000000000000000001
         run: |
@@ -109,8 +114,14 @@ jobs:
           assert row['status'] == 'draft'
           assert row['sensitivity'] == 'public'
           assert len(row['provenance_hash']) == 64
-          assert 'real_farm_connected' in row['content']
-          print('Digital Farm -> ASA/AOIP governed bridge: PASS')
+          content=json.loads(row['content'])
+          assert content['schema'] == 'asa.aoip.digital-farm-run-summary.v2'
+          assert content['adaptive_behavior'] is True
+          assert content['privacy_reroutes'] > 0
+          assert content['adaptive_revisits'] > 0
+          assert content['degraded_sensor_cycles'] > 0
+          assert content['real_farm_connected'] is False
+          print('Adaptive Digital Farm -> ASA/AOIP governed bridge: PASS')
           PY
       - name: Stop local API
         if: always()
