@@ -131,6 +131,7 @@ class InteractiveDigitalWorld:
             "last_command": None,
             "last_perception": None,
         }
+        self.state = state
         self._save()
         self.events.append("WORLD_CREATED", self._public_state())
         return state
