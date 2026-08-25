@@ -1,7 +1,7 @@
 {
   "system_id": "ASA-GITHUB-AUDIT-001",
   "name": "ASA GitHub Evidence Audit",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "repository": {
     "full_name": "m7ssn76-prog/Almutawa",
     "repository_id": 1305663312,
@@ -30,6 +30,109 @@
     "hash_tracked_files": true,
     "verification_rule": "Internal Test Only requires a successful GitHub Actions evidence-audit run tied to the relevant commit."
   },
+  "evidence_registry_schema": {
+    "required_fields": [
+      "evidence_id",
+      "source_title_or_identifier",
+      "source_location",
+      "source_owner_or_authority",
+      "version_or_commit",
+      "approval_state",
+      "sensitivity",
+      "data_origin",
+      "captured_at",
+      "hash_or_integrity_reference",
+      "freshness_state",
+      "scope",
+      "classification"
+    ],
+    "admissibility_rule": "Evidence is admissible for an asserted result only when its source, scope, version, authority, freshness, and integrity reference are known. Missing required fields keep the claim Unverified, Requires Original Source, or Internal Test Only as applicable.",
+    "source_priority": [
+      "current_authoritative_source",
+      "approved_original_source",
+      "reproducible_runtime_or_test_evidence",
+      "historical_snapshot",
+      "secondary_summary"
+    ]
+  },
+  "kpi_engine": {
+    "required_fields": [
+      "kpi_id",
+      "name",
+      "definition",
+      "formula",
+      "data_source",
+      "measurement_period",
+      "baseline",
+      "target_or_decision_threshold",
+      "owner",
+      "eligibility_gate",
+      "actual_value",
+      "evidence_reference"
+    ],
+    "official_kpi_rule": "A metric is not an official KPI until its definition, source, period, baseline where required, owner, eligibility gate, actual value, and evidence reference are all present and the relevant human or institutional gate is satisfied.",
+    "p004_human_review_gate": {
+      "required_total": 50,
+      "current_verified_total": 0,
+      "status": "External Evidence Required",
+      "rule": "AI pre-review, synthetic closed-set checks, or internal automated mappings do not increment the independent human review count."
+    }
+  },
+  "risk_engine": {
+    "required_fields": [
+      "risk_id",
+      "risk_statement",
+      "cause",
+      "impact",
+      "likelihood",
+      "control",
+      "residual_risk",
+      "owner",
+      "review_date",
+      "evidence_reference",
+      "status"
+    ],
+    "hard_gate_rule": "A risk that depends on external approval, real-user evidence, independent review, or independent security assessment cannot be marked closed by local tests alone."
+  },
+  "audit_event_model": {
+    "required_fields": [
+      "event_id",
+      "timestamp",
+      "actor_class",
+      "action",
+      "object_reference",
+      "before_hash_or_state",
+      "after_hash_or_state",
+      "evidence_reference",
+      "outcome",
+      "classification"
+    ],
+    "privacy_rule": "Audit records should store the minimum data necessary for traceability and must not reproduce secrets, protected organizational content, or unnecessary personal data."
+  },
+  "gap_closure_engine": {
+    "categories": {
+      "close_internally": "Definition, schema, control, test criteria, and evidence requirements can be implemented and verified locally.",
+      "collect_real_evidence": "Closure requires real measured evidence that cannot be replaced by synthetic or internal simulation.",
+      "external_approval_ready": "The project may prepare the approval package, but only the authorized external function can close the gate.",
+      "hard_gate": "Status cannot progress while the required evidence or authorized decision is absent."
+    },
+    "external_approval_gates": [
+      "formal_business_owner_or_authorized_sponsor",
+      "approved_p004_data_or_content_owner",
+      "information_security",
+      "privacy_or_dpia",
+      "records_retention_where_applicable",
+      "enterprise_architecture",
+      "legal_ip_and_provider_terms"
+    ],
+    "real_evidence_gates": [
+      "independent_human_review_50",
+      "real_workflow_baseline",
+      "real_user_validation_or_satisfaction",
+      "independent_vulnerability_assessment_or_penetration_test_when_required"
+    ],
+    "production_gate": "Production Deployment and Institutional GO remain Not Approved / Not Demonstrated until all applicable hard gates are independently evidenced and the authorized decision is recorded."
+  },
   "freshness_rule": {
     "dated_records": "historical_snapshot",
     "current_state_source": "live_verification_required",
@@ -49,7 +152,11 @@
     "record_event_metadata",
     "generate_sha256_manifest",
     "upload_github_actions_artifact",
-    "chatgpt_read_and_summarize_evidence"
+    "chatgpt_read_and_summarize_evidence",
+    "classify_gap_closure_state",
+    "evaluate_kpi_eligibility",
+    "evaluate_evidence_admissibility",
+    "evaluate_hard_gates"
   ],
   "forbidden_operations": [
     "read_or_print_secrets",
@@ -57,7 +164,10 @@
     "modify_external_repositories",
     "push_generated_evidence_back_to_repository",
     "claim_production_or_institutional_approval_without_evidence",
-    "treat_historical_state_as_current_without_live_verification"
+    "treat_historical_state_as_current_without_live_verification",
+    "count_ai_pre_review_as_independent_human_review",
+    "promote_internal_test_metrics_to_official_kpis_without_eligibility_evidence",
+    "close_external_approval_gates_from_local_test_results"
   ],
   "status_gate": {
     "design": "may be documented",

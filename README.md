@@ -64,6 +64,52 @@ Branch protection/rulesets are separate GitHub settings controls. CI checks comp
 
 The bearer-token gate is a **pre-pilot local control only**. It is not enterprise SSO, RBAC, MFA, identity federation, user lifecycle management, access certification, or institutional authorization.
 
+## Governance engines and closure gates
+
+The project governance model now defines four shared control layers in the existing `.asa/audit-policy.json` policy:
+
+1. **Evidence Engine** — requires source identity, owner/authority, version or commit, approval state, sensitivity, data origin, freshness, integrity reference, scope, and evidence classification before a claim can be promoted.
+2. **KPI Engine** — requires definition, formula, source, measurement period, baseline where required, threshold, owner, eligibility gate, actual value, and evidence reference before a metric may be called an official KPI.
+3. **Risk Engine** — requires a structured risk statement, cause, impact, likelihood, control, residual risk, owner/authority, review date, evidence reference, and status.
+4. **Audit Engine** — requires event identity, timestamp, actor class, action, object reference, before/after state or hash, evidence reference, outcome, and classification while minimizing protected or personal data.
+
+These definitions may close design/control-model gaps. They do not themselves close external institutional gates.
+
+### Gap Closure Engine
+
+Every remaining gap is placed into one of four categories:
+
+| Category | Meaning | What can close it |
+| --- | --- | --- |
+| Close Internally | Definition, schema, control, test criteria, or local implementation gap | Reproducible implementation/test evidence tied to the relevant version or commit |
+| Collect Real Evidence | Requires actual measured evidence | Real workflow measurements, real users, independent reviewers, or independent security evidence as applicable |
+| External Approval Ready | Project can prepare the package but cannot self-approve | Recorded decision from the authorized external function |
+| Hard Gate | Status must not progress while missing | Required evidence **and/or** authorized decision, according to the gate |
+
+### Current P-004 hard gates
+
+The following must remain visibly open until independently evidenced:
+
+- **Independent Human Review:** required total `50`; current verified total remains `0/50`. AI pre-review and automated mapping do not increment this counter.
+- **Real workflow baseline:** not established by synthetic or closed-set internal runs.
+- **Real-user validation/satisfaction:** requires actual users and a documented measurement method.
+- **Approved P-004 corpus:** requires the authorized content/data owner and a source-by-source approved list outside this public repository unless explicitly cleared for public disclosure.
+- **Independent vulnerability assessment / penetration testing:** required when dictated by the target environment, policy, or risk; local CI is not a substitute.
+
+### External approval gates
+
+The project may prepare evidence and decision packages for these functions but may not mark them approved without an authorized recorded decision:
+
+- formal Business Owner or authorized sponsor;
+- Data/Content Owner;
+- Information Security;
+- Privacy/DPIA;
+- Records/retention where applicable;
+- Enterprise Architecture;
+- Legal/IP and AI/provider/vendor contractual terms.
+
+**Production Deployment** and **Institutional GO** remain `Not Approved / Not Demonstrated` until all applicable hard gates are closed with the required independent evidence and authorized decision.
+
 ## Governed OpenAI evidence path
 
 The optional `/api/v1/ai/evidence-answer` endpoint is fail-closed and is intended only for controlled pre-pilot testing.
@@ -138,6 +184,8 @@ The automated AI-path tests use a synthetic credential-shaped value and a mocked
 ## Project status
 
 **Discovery / Pre-Pilot — Revise.** This code is not approved for production, enterprise integration, company data, operational decisions, safety decisions, quality release, or engineering acceptance.
+
+The gap-closure control model is now documented in existing project governance files, but real-evidence and external-approval gates remain open until their required evidence or authorized decisions exist.
 
 ## License
 

@@ -38,6 +38,40 @@ The controlled pre-pilot must use:
 - human verification of cited sources;
 - a documented stop mechanism.
 
+## Risk Engine minimum model
+
+Every tracked security, privacy, data, integration, or governance risk should identify:
+
+- Risk ID;
+- risk statement;
+- cause;
+- impact;
+- likelihood;
+- current control or mitigation;
+- residual risk;
+- accountable owner or required authority;
+- review date;
+- evidence reference; and
+- status.
+
+A risk that depends on external approval, real-user evidence, independent review, independent vulnerability assessment, or penetration testing cannot be marked closed by local automated tests alone.
+
+### Hard security gates
+
+The following remain hard gates for any enterprise or production claim unless independent evidence and authorized decisions show otherwise:
+
+- enterprise authentication and authorization, including appropriate SSO/RBAC/MFA or equivalent controls;
+- approved key and secret management such as the institutionally selected KMS/HSM or equivalent;
+- authorized hosting and network architecture;
+- independent vulnerability assessment and penetration testing when required by policy or risk;
+- information-security review/approval;
+- approved data/content scope;
+- privacy/DPIA and records controls where applicable;
+- provider/vendor due diligence and contractual data-handling terms;
+- production monitoring, incident response, backup/restore, resilience, and change-control requirements appropriate to the target environment.
+
+Passing CI, Docker tests, localhost authentication tests, static checks, or synthetic workflow checks does not close these gates.
+
 ## Pre-pilot API authentication gate
 
 All `/api/v1/*` routes require a bearer token supplied through `ASA_API_BEARER_TOKEN`. The token must be at least 32 characters and must be provided through the runtime environment or an approved secret mechanism; it must never be committed to source control.
@@ -72,6 +106,14 @@ The external connection path requires all of the following at runtime:
 
 Secrets and credentials must be provided only through an approved runtime secret manager or environment mechanism and must never be committed to the repository. A passing external probe demonstrates only that the configured endpoint was reachable under these controls; it does not establish institutional approval, data-owner approval, security certification, or production readiness.
 
+## Evidence required to close a security gap
+
+A security gap may be classified as locally closed only when the relevant control is implemented, its test is reproducible, and the evidence is tied to the tested version or commit. The evidence should identify what was tested, expected behavior, actual result, version/commit, and the evidence reference.
+
+Examples of claims that may be locally verified include fail-closed API behavior, local-only bind behavior, container execution, dependency checks, and synthetic persistence tests. The classification must remain **Internal Test Only** unless a stronger authorized gate is independently satisfied.
+
+Claims such as "enterprise ready", "secure for company data", "penetration tested", "approved by InfoSec", "production deployed", or "institutionally approved" require their corresponding independent evidence or authorized decision and must not be inferred from local success.
+
 ## Repository checks
 
 The CI workflow runs `scripts/repo_policy_check.py` to detect prohibited file types and common secret or organizational-data indicators. A passing check reduces risk but does not prove that the repository is free of confidential, personal, proprietary, or regulated information.
@@ -79,6 +121,12 @@ The CI workflow runs `scripts/repo_policy_check.py` to detect prohibited file ty
 ## Third-party dependencies
 
 Dependencies must be pinned, reviewed, and tested. A successful dependency installation, test run, or container build is not an approval for deployment. Provider, hosting, data residency, retention, training-use, and contractual controls require separate review before non-synthetic data is used.
+
+## Gap-closure authority boundary
+
+The project may internally prepare and test security controls, threat assumptions, risk records, evidence requirements, and approval packages. It may not self-approve the functions reserved for an authorized Business Owner, Data Owner, Information Security, Privacy/DPIA, Records, Enterprise Architecture, Legal/IP, provider/vendor authority, or production change authority.
+
+If a required external gate is absent, the correct state is **External Approval Required**, **Evidence Required**, **Blocked**, or **Revise** as appropriate — not Passed.
 
 ## No warranty or certification
 
