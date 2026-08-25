@@ -2,48 +2,63 @@
 
 ## Default position
 
-ASA/AOIP is a proprietary Discovery / Pre-Pilot project. Publication is **denied by default**.
+ASA/AOIP is a proprietary Discovery / Pre-Pilot project. This repository operates in **PUBLIC-SAFE REPOSITORY MODE**: the repository may remain public, but publication of protected information is denied by default.
 
-Source code, documentation, demonstrations, screenshots, datasets, test results, architecture diagrams, issue discussions, workflow logs, and deployment links must not be made public unless the required review is completed and the owner gives written authorization.
+Public visibility does not grant an open-source license and does not authorize disclosure of employer, customer, supplier, partner, personal, operational, restricted, or otherwise non-public material.
 
-## Private-development requirement
+## Public-safe repository requirement
 
-Protected development is intended to occur in a private repository with access limited to named collaborators who require access for the approved task.
+Everything committed to this repository must be safe to treat as publicly accessible.
 
-A public repository, public fork, public release, public package, public deployment, or publicly accessible demonstration is not an approved storage or operating environment for protected project material.
+Allowed material is limited to:
 
-## Material that must never be published
+- synthetic examples created for testing;
+- public information that is lawful to reuse;
+- project-owned technical material cleared for public disclosure; and
+- low-sensitivity material with explicit written approval for this exact public purpose.
+
+Protected development must occur in a separate private or institutionally approved environment with appropriate access controls. Protected material must never be copied into this public repository merely because a branch, workflow, issue, pull request, artifact, or commit appears temporary.
+
+Changing repository visibility does not alter copyright ownership, licensing, confidentiality obligations, or prior exposure history.
+
+## Material that must never be published here
 
 - employer, customer, supplier, partner, or government documents;
 - controlled procedures, drawings, specifications, records, reports, internal presentations, or screenshots;
 - credentials, tokens, secrets, keys, certificates, cookies, connection strings, or tenant identifiers;
 - internal URLs, private repository links, source-system names, or non-public network and architecture details;
-- personal, sensitive, confidential, restricted, proprietary, operational, or contract-protected information;
+- personal, sensitive, confidential, restricted, proprietary, operational, or contract-protected information not explicitly cleared for public disclosure;
 - unapproved logos, trademarks, branding, or statements suggesting endorsement;
 - raw user prompts, uploads, logs, recordings, feedback, or production telemetry;
 - results described as independent validation, official KPI, compliance, certification, or production readiness without the required evidence and authority.
 
-## Material that may be considered for publication
+## Material that may be published in this repository
 
-Only a sanitized package may be considered, and only after review. It must be limited to:
+Only sanitized material within PUBLIC-SAFE REPOSITORY MODE may be committed. It may include:
 
-- generic project description;
+- generic project descriptions;
 - synthetic examples;
 - public information lawful to reuse;
 - technical material owned by the project owner and cleared for disclosure;
-- results clearly labeled with their test environment, limitations, sample size, reviewer status, and non-production boundary.
+- internal-test results clearly labeled with their environment, limitations, sample size, reviewer status, and non-production boundary.
 
-## Required approval before publication
+## Required review before adding non-synthetic material
 
-The publication record must identify:
+The publication decision must identify, when applicable:
 
-1. exact files, commit, screenshots, links, and results proposed for publication;
+1. the exact files, commit, screenshots, links, and results proposed for publication;
 2. copyright and third-party rights review;
 3. data and privacy review;
 4. security and secret-scan result;
 5. removal of organizational names, logos, internal references, and endorsement implications unless specifically authorized;
-6. owner approval;
+6. owner approval; and
 7. when employment-related material or context is involved, the relevant authorized Legal/IP, Information Security, Privacy/Records, Communications, and data/content-owner decisions.
+
+## Evidence and status freshness
+
+Dated `.asa` records, historical CI results, prior automation states, connector-capability notes, and earlier repository-visibility statements are historical snapshots. They do not define the current state unless they are re-verified against current GitHub metadata and current execution evidence.
+
+A current-state claim must identify the relevant repository state, commit SHA, status/check evidence, and verification date where applicable. Historical records must be preserved as history rather than silently reinterpreted as current operational truth.
 
 ## Public statements
 
@@ -57,10 +72,10 @@ No internal check may be described as an independent validation, official KPI, c
 
 ## Releases and deployments
 
-- No public release or package is authorized.
-- No automatic public-cloud deployment configuration may be committed in the controlled pre-pilot branch.
-- Deployment requires a separate approved environment, data-flow review, access model, security assessment, retention plan, incident process, and written decision.
-- A successful build does not authorize deployment.
+- Public repository visibility does **not** authorize a public release, package, hosted service, or production deployment.
+- No automatic public-cloud deployment configuration may be committed unless the separate deployment governance and security decision explicitly authorizes it.
+- Deployment requires a separately approved environment, data-flow review, access model, security assessment, retention plan, incident process, and written decision.
+- A successful build, container run, status check, or internal test does not authorize deployment.
 
 ## Revocation and incident handling
 
