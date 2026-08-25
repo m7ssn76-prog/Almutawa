@@ -24,6 +24,7 @@ DataOrigin = Literal[
 ]
 ProvenanceVersion = Literal["legacy-v0", "canonical-json-v1"]
 EvidenceAnswerStatus = Literal["answered", "insufficient_evidence"]
+ClaimStatus = Literal["verified", "inference", "unverified", "conflict"]
 
 
 class KnowledgeCreate(BaseModel):
@@ -83,10 +84,17 @@ class EvidenceQuestionRequest(BaseModel):
     q: str = Field(min_length=3, max_length=500)
 
 
+class EvidenceClaim(BaseModel):
+    text: str = Field(min_length=1, max_length=1200)
+    status: ClaimStatus
+    evidence_ids: list[int] = Field(default_factory=list, max_length=10)
+
+
 class EvidenceAgentOutput(BaseModel):
     status: EvidenceAnswerStatus
     answer: str = Field(min_length=1, max_length=4000)
     evidence_ids: list[int] = Field(default_factory=list, max_length=10)
+    claims: list[EvidenceClaim] = Field(default_factory=list, max_length=12)
 
 
 class EvidenceCitation(BaseModel):
@@ -101,3 +109,4 @@ class EvidenceAnswerResponse(BaseModel):
     answer: str
     model: str | None = None
     evidence: list[EvidenceCitation] = Field(default_factory=list, max_length=10)
+    claims: list[EvidenceClaim] = Field(default_factory=list, max_length=12)
