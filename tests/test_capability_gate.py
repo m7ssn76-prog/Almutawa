@@ -143,6 +143,10 @@ def test_ai_path_returns_without_provider_call_when_public_evidence_is_missing(
             "prev_event_hash, event_hash, event_integrity_version "
             "FROM ai_audit_events ORDER BY id DESC LIMIT 1"
         ).fetchone()
+        checkpoint = conn.execute(
+            "SELECT event_count, last_event_id, last_event_hash, state_hash, state_version "
+            "FROM ai_audit_chain_state WHERE id = 1"
+        ).fetchone()
     assert audit is not None
     expected = hmac.new(
         AUDIT_HMAC_MATERIAL.encode("utf-8"),
@@ -157,6 +161,12 @@ def test_ai_path_returns_without_provider_call_when_public_evidence_is_missing(
     assert audit["prev_event_hash"] == ""
     assert len(audit["event_hash"]) == 64
     assert audit["event_integrity_version"] == "hmac-sha256-chain-v1"
+    assert checkpoint is not None
+    assert checkpoint["event_count"] == 1
+    assert checkpoint["last_event_id"] == 1
+    assert checkpoint["last_event_hash"] == audit["event_hash"]
+    assert len(checkpoint["state_hash"]) == 64
+    assert checkpoint["state_version"] == "hmac-sha256-state-v1"
     assert db.verify_ai_audit_chain()["ok"] is True
 
 
@@ -195,6 +205,50 @@ def test_ai_audit_chain_links_events_and_detects_tampering(
     assert tampered["reason"] == "event_hash_mismatch"
 
 
+def test_ai_audit_checkpoint_detects_tail_deletion(ai_client: TestClient) -> None:
+    assert _ask(ai_client, "first tail checkpoint question").status_code == 200
+    assert _ask(ai_client, "second tail checkpoint question").status_code == 200
+    assert db.verify_ai_audit_chain()["ok"] is True
+
+    with db.get_conn() as conn:
+        tail = conn.execute("SELECT MAX(id) AS id FROM ai_audit_events").fetchone()["id"]
+        conn.execute("DELETE FROM ai_audit_events WHERE id = ?", (tail,))
+        conn.commit()
+
+    result = db.verify_ai_audit_chain()
+    assert result["ok"] is False
+    assert result["reason"] == "audit_tail_gap_detected"
+
+
+def test_ai_audit_checkpoint_deletion_is_detected(ai_client: TestClient) -> None:
+    assert _ask(ai_client, "checkpoint presence question").status_code == 200
+    assert db.verify_ai_audit_chain()["ok"] is True
+
+    with db.get_conn() as conn:
+        conn.execute("DELETE FROM ai_audit_chain_state WHERE id = 1")
+        conn.commit()
+
+    result = db.verify_ai_audit_chain()
+    assert result["ok"] is False
+    assert result["reason"] == "missing_chain_checkpoint"
+
+
+def test_ai_audit_checkpoint_hash_tampering_is_detected(ai_client: TestClient) -> None:
+    assert _ask(ai_client, "checkpoint tamper question").status_code == 200
+    assert db.verify_ai_audit_chain()["ok"] is True
+
+    with db.get_conn() as conn:
+        conn.execute(
+            "UPDATE ai_audit_chain_state SET state_hash = ? WHERE id = 1",
+            ("0" * 64,),
+        )
+        conn.commit()
+
+    result = db.verify_ai_audit_chain()
+    assert result["ok"] is False
+    assert result["reason"] == "checkpoint_hash_mismatch"
+
+
 def test_ai_audit_legacy_rows_are_preserved_without_retroactive_chain(
     tmp_path,
     monkeypatch,
@@ -229,12 +283,16 @@ def test_ai_audit_legacy_rows_are_preserved_without_retroactive_chain(
             "SELECT question_fingerprint_version, question_data_origin, prev_event_hash, "
             "event_hash, event_integrity_version FROM ai_audit_events WHERE id = 1"
         ).fetchone()
+        state = migrated.execute(
+            "SELECT * FROM ai_audit_chain_state WHERE id = 1"
+        ).fetchone()
     assert row is not None
     assert row["question_fingerprint_version"] == "sha256-v0"
     assert row["question_data_origin"] == "unverified_legacy"
     assert row["prev_event_hash"] == ""
     assert row["event_hash"] == ""
     assert row["event_integrity_version"] == "legacy-unchained-v0"
+    assert state is None
     assert db.verify_ai_audit_chain() == {
         "ok": True,
         "legacy_events": 1,
