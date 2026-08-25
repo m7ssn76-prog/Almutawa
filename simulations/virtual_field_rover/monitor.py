@@ -77,6 +77,7 @@ class DigitalFarm:
         self.index = 0
         self.incident_remaining = 0
         self.incident_id: str | None = None
+        self.last_point: dict | None = None
 
     def zone_at(self, x: int, y: int) -> dict | None:
         for zone in self.cfg["zones"]:
@@ -84,12 +85,35 @@ class DigitalFarm:
                 return zone
         return None
 
-    def next_context(self) -> tuple[dict, bool]:
-        point = self.cfg["patrol_waypoints"][self.index % len(self.cfg["patrol_waypoints"])]
-        self.index += 1
+    def _next_waypoint(self, *, force_private: bool) -> dict:
+        waypoints = self.cfg["patrol_waypoints"]
+        for _ in range(len(waypoints)):
+            point = waypoints[self.index % len(waypoints)]
+            self.index += 1
+            zone = self.zone_at(point["x"], point["y"])
+            if zone is None:
+                raise RuntimeError("waypoint outside geofence")
+            if not force_private or zone["type"] == "private_authorized":
+                return point
+        raise RuntimeError("no private-authorized waypoint available for privacy reroute")
+
+    def next_context(
+        self,
+        *,
+        revisit: bool = False,
+        force_private: bool = False,
+    ) -> tuple[dict, bool]:
+        if revisit and self.last_point is not None:
+            point = self.last_point
+        else:
+            point = self._next_waypoint(force_private=force_private)
+            self.last_point = point
+
         zone = self.zone_at(point["x"], point["y"])
         if zone is None:
             raise RuntimeError("waypoint outside geofence")
+        if force_private and zone["type"] != "private_authorized":
+            raise RuntimeError("privacy reroute did not reach a private-authorized zone")
 
         if self.incident_remaining <= 0 and self.rng.random() < 0.035:
             self.incident_remaining = self.rng.randint(4, 8)
@@ -107,7 +131,11 @@ class DigitalFarm:
             "zone_type": zone["type"],
             "position": point,
         }
-        hidden = {"incident": incident, "incident_id": self.incident_id, "human_presence": human_presence}
+        hidden = {
+            "incident": incident,
+            "incident_id": self.incident_id,
+            "human_presence": human_presence,
+        }
         return public_context | {"_hidden": hidden}, incident
 
 
@@ -150,16 +178,36 @@ class VirtualFarmMonitor:
         "air_quality_index": (42.0, 4.0, 110.0),
         "light_lux_k": (35.0, 5.0, -25.0),
     }
+    SENSOR_FAULT_PROBABILITY = 0.03
+    MIN_HEALTHY_SENSORS = 4
+    INVESTIGATION_THRESHOLD = 0.45
+    ALERT_THRESHOLD = 0.68
+    CONFIRMATIONS_REQUIRED = 3
+    INVESTIGATION_REVISITS = 2
 
-    def __init__(self, farm_map: Path, runtime: Path, seed: int = 20260825):
+    def __init__(
+        self,
+        farm_map: Path,
+        runtime: Path,
+        seed: int = 20260825,
+        *,
+        adaptive_behavior: bool = True,
+    ):
         self.rng = random.Random(seed + 1000)
         self.farm = DigitalFarm(farm_map, seed)
         self.engine = RobustAnomalyEngine()
         self.chain = EvidenceChain(runtime / "environmental_evidence.jsonl")
         self.aoip = EvidenceChain(runtime / "asa_aoip_environmental_gateway.jsonl")
+        self.adaptive_behavior = adaptive_behavior
         self.confirm_count = 0
+        self.revisit_cycles = 0
+        self.force_private_next = False
         self.cycles = 0
         self.privacy_yields = 0
+        self.privacy_reroutes = 0
+        self.adaptive_revisits = 0
+        self.investigation_triggers = 0
+        self.degraded_sensor_cycles = 0
         self.confirmed = 0
         self.false_alerts = 0
         self.hidden_incidents: set[str] = set()
@@ -168,33 +216,101 @@ class VirtualFarmMonitor:
     def _reading(self, name: str, incident: bool) -> tuple[float, float, bool]:
         base, noise, delta = self.SENSOR_SPECS[name]
         value = self.rng.gauss(base + (delta if incident else 0.0), noise)
+        if self.adaptive_behavior and self.rng.random() < self.SENSOR_FAULT_PROBABILITY:
+            return round(value, 4), 0.0, False
         return round(value, 4), 1.0, True
 
+    def _schedule_revisit(self, cycles: int) -> None:
+        if self.adaptive_behavior:
+            self.revisit_cycles = max(self.revisit_cycles, cycles)
+
     def cycle(self) -> dict:
-        context, incident = self.farm.next_context()
+        revisit = self.adaptive_behavior and self.revisit_cycles > 0
+        force_private = self.adaptive_behavior and self.force_private_next
+        context, incident = self.farm.next_context(
+            revisit=revisit,
+            force_private=force_private,
+        )
         hidden = context.pop("_hidden")
+
+        route_action = "NORMAL_PATROL"
+        if revisit:
+            self.revisit_cycles -= 1
+            self.adaptive_revisits += 1
+            route_action = "REVISIT_FOR_CONFIRMATION"
+        elif force_private:
+            self.force_private_next = False
+            self.privacy_reroutes += 1
+            route_action = "REROUTE_PRIVATE"
+
         if hidden["incident_id"]:
             self.hidden_incidents.add(hidden["incident_id"])
 
-        if context["zone_type"] == "open_privacy_safe" and hidden["human_presence"]:
+        privacy_yield = (
+            context["zone_type"] == "open_privacy_safe"
+            and hidden["human_presence"]
+        )
+        if privacy_yield:
             self.privacy_yields += 1
             privacy_mode = "PRIVACY_YIELD"
+            if self.adaptive_behavior:
+                self.force_private_next = True
         else:
-            privacy_mode = "PRIVATE_AUTHORIZED" if context["zone_type"] == "private_authorized" else "PRIVACY_SAFE"
+            privacy_mode = (
+                "PRIVATE_AUTHORIZED"
+                if context["zone_type"] == "private_authorized"
+                else "PRIVACY_SAFE"
+            )
 
         readings: dict[str, dict] = {}
         scores: dict[str, float] = {}
         health: dict[str, float] = {}
+        healthy_sensors = 0
         for name in self.SENSOR_SPECS:
             value, sensor_health, valid = self._reading(name, incident)
             score = self.engine.score(name, value, sensor_health, valid)
             readings[name] = Reading(name, value, sensor_health, valid, score).__dict__
             scores[name] = score
             health[name] = sensor_health
+            if valid and sensor_health >= 0.5:
+                healthy_sensors += 1
 
         fused = self.engine.fuse(scores, health)
-        self.confirm_count = self.confirm_count + 1 if fused >= 0.68 else 0
-        active_alert = self.confirm_count >= 3
+        state = "MONITORING"
+        active_alert = False
+
+        if self.adaptive_behavior and privacy_yield:
+            self.confirm_count = 0
+            self.revisit_cycles = 0
+            state = "PRIVACY_YIELD"
+        elif self.adaptive_behavior and healthy_sensors < self.MIN_HEALTHY_SENSORS:
+            self.degraded_sensor_cycles += 1
+            self.confirm_count = 0
+            self._schedule_revisit(1)
+            state = "DEGRADED_SENSOR_MODE"
+        else:
+            if fused >= self.ALERT_THRESHOLD:
+                self.confirm_count += 1
+                if (
+                    self.adaptive_behavior
+                    and self.confirm_count < self.CONFIRMATIONS_REQUIRED
+                    and self.revisit_cycles == 0
+                ):
+                    self._schedule_revisit(self.INVESTIGATION_REVISITS)
+                    self.investigation_triggers += 1
+                    state = "INVESTIGATING"
+            elif self.adaptive_behavior and fused >= self.INVESTIGATION_THRESHOLD:
+                self.confirm_count = 0
+                if self.revisit_cycles == 0:
+                    self._schedule_revisit(self.INVESTIGATION_REVISITS)
+                    self.investigation_triggers += 1
+                state = "INVESTIGATING"
+            else:
+                self.confirm_count = 0
+
+            active_alert = self.confirm_count >= self.CONFIRMATIONS_REQUIRED
+            if active_alert:
+                state = "ALERT_PENDING_HUMAN_REVIEW"
 
         if active_alert:
             self.confirmed += 1
@@ -203,9 +319,12 @@ class VirtualFarmMonitor:
             else:
                 self.false_alerts += 1
             payload = {
-                "schema": "asa.aoip.environmental-evidence.v1",
+                "schema": "asa.aoip.environmental-evidence.v2",
                 "fact": {"readings": readings, "farm_context": context},
-                "inference": {"classification": "ENVIRONMENTAL_ANOMALY", "confidence": fused},
+                "inference": {
+                    "classification": "ENVIRONMENTAL_ANOMALY",
+                    "confidence": fused,
+                },
                 "privacy": {
                     "mode": privacy_mode,
                     "person_tracking": False,
@@ -213,25 +332,34 @@ class VirtualFarmMonitor:
                     "person_media_stored": False,
                 },
                 "control": {
+                    "behavior_state": state,
+                    "route_action": route_action,
+                    "healthy_sensors": healthy_sensors,
                     "autonomous_physical_actuation": False,
                     "human_verification_required": True,
                 },
             }
             event = self.chain.append("confirmed_anomaly", payload)
-            self.aoip.append("environmental_evidence_ingest", {
-                "source_event_hash": event["record_hash"],
-                "schema": payload["schema"],
-                "evidence_classification": "Internal Test Only",
-                "external_connection": False,
-                "production_deployment": False,
-            })
+            self.aoip.append(
+                "environmental_evidence_ingest",
+                {
+                    "source_event_hash": event["record_hash"],
+                    "schema": payload["schema"],
+                    "evidence_classification": "Internal Test Only",
+                    "external_connection": False,
+                    "production_deployment": False,
+                },
+            )
             self.confirm_count = 0
+            self.revisit_cycles = 0
 
         self.cycles += 1
         return {
             "cycle": self.cycles,
-            "state": "PRIVACY_YIELD" if privacy_mode == "PRIVACY_YIELD" else "MONITORING",
+            "state": state,
+            "route_action": route_action,
             "zone_id": context["zone_id"],
+            "healthy_sensors": healthy_sensors,
             "fused_anomaly_score": fused,
             "active_alert": active_alert,
         }
@@ -242,17 +370,30 @@ class VirtualFarmMonitor:
             last = self.cycle()
         chain_ok, chain_events = self.chain.verify()
         aoip_ok, aoip_events = self.aoip.verify()
+        hidden_count = len(self.hidden_incidents)
+        detected_count = len(self.detected_incidents)
+        detection_rate = detected_count / hidden_count if hidden_count else 0.0
         return {
             "classification": "Internal Test Only",
             "simulation_only": True,
             "real_farm_connected": False,
+            "adaptive_behavior": self.adaptive_behavior,
             "cycles": self.cycles,
-            "hidden_incidents": len(self.hidden_incidents),
-            "detected_incidents": len(self.detected_incidents),
+            "hidden_incidents": hidden_count,
+            "detected_incidents": detected_count,
+            "detection_rate": round(detection_rate, 6),
             "false_alerts": self.false_alerts,
             "privacy_yields": self.privacy_yields,
+            "privacy_reroutes": self.privacy_reroutes,
+            "adaptive_revisits": self.adaptive_revisits,
+            "investigation_triggers": self.investigation_triggers,
+            "degraded_sensor_cycles": self.degraded_sensor_cycles,
             "evidence_chain": {"valid": chain_ok, "events": chain_events},
-            "asa_aoip_gateway": {"valid": aoip_ok, "events": aoip_events, "external_connection": False},
+            "asa_aoip_gateway": {
+                "valid": aoip_ok,
+                "events": aoip_events,
+                "external_connection": False,
+            },
             "last_state": last,
         }
 
