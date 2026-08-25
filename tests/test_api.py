@@ -403,39 +403,94 @@ def test_external_target_blocks_private_resolution(client: TestClient, monkeypat
     assert response.json()["detail"] == "External target resolved to a blocked address"
 
 
-def test_external_probe_works_only_after_all_guards(client: TestClient, monkeypatch) -> None:
+def test_external_target_blocks_mixed_public_private_resolution(
+    client: TestClient,
+    monkeypatch,
+) -> None:
     monkeypatch.setenv("ASA_PRODUCTION_MODE", "true")
     monkeypatch.setenv("ASA_PRODUCTION_APPROVED", "true")
     monkeypatch.setenv("ASA_EXTERNAL_ENABLED", "true")
     monkeypatch.setenv("ASA_EXTERNAL_URL", "https://example.com/health")
     monkeypatch.setenv("ASA_EXTERNAL_ALLOWED_HOSTS", "example.com")
-    monkeypatch.setenv("ASA_EXTERNAL_TIMEOUT_SECONDS", "2")
     monkeypatch.setattr(
         main_module.socket,
         "getaddrinfo",
-        lambda *args, **kwargs: [(2, 1, 6, "", ("93.184.216.34", 443))],
+        lambda *args, **kwargs: [
+            (2, 1, 6, "", ("93.184.216.34", 443)),
+            (2, 1, 6, "", ("127.0.0.1", 443)),
+        ],
     )
 
-    class FakeResponse:
-        status = 200
+    response = client.get("/api/v1/external/health")
+    assert response.status_code == 503
+    assert response.json()["detail"] == "External target resolved to a blocked address"
 
-        def read(self, size: int) -> bytes:
-            return b"ok"
 
-        def __enter__(self):
-            return self
+def test_pinned_https_connection_uses_verified_ip_and_original_tls_hostname(
+    monkeypatch,
+) -> None:
+    calls: dict[str, object] = {}
 
-        def __exit__(self, exc_type, exc, tb):
-            return False
+    class FakeRawSocket:
+        def close(self) -> None:
+            calls["raw_closed"] = True
 
-    class FakeOpener:
-        def open(self, request, timeout: float):
-            assert request.full_url == "https://example.com/health"
-            assert timeout == 2
-            return FakeResponse()
+    class FakeTLSContext:
+        def wrap_socket(self, raw_socket, server_hostname: str):
+            calls["wrapped_socket"] = raw_socket
+            calls["server_hostname"] = server_hostname
+            return object()
 
-    monkeypatch.setattr(main_module, "build_opener", lambda *args: FakeOpener())
+    def fake_create_connection(address, timeout):
+        calls["address"] = address
+        calls["timeout"] = timeout
+        return FakeRawSocket()
+
+    monkeypatch.setattr(main_module.socket, "create_connection", fake_create_connection)
+    connection = main_module._PinnedHTTPSConnection(
+        host="example.com",
+        pinned_ip="93.184.216.34",
+        port=443,
+        timeout=2,
+        context=FakeTLSContext(),
+    )
+    connection.connect()
+
+    assert calls["address"] == ("93.184.216.34", 443)
+    assert calls["timeout"] == 2
+    assert calls["server_hostname"] == "example.com"
+
+
+def test_external_probe_uses_dns_verified_ip_without_second_resolution(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ASA_PRODUCTION_MODE", "true")
+    monkeypatch.setenv("ASA_PRODUCTION_APPROVED", "true")
+    monkeypatch.setenv("ASA_EXTERNAL_ENABLED", "true")
+    monkeypatch.setenv("ASA_EXTERNAL_URL", "https://example.com/health?mode=bounded")
+    monkeypatch.setenv("ASA_EXTERNAL_ALLOWED_HOSTS", "example.com")
+    monkeypatch.setenv("ASA_EXTERNAL_TIMEOUT_SECONDS", "2")
+
+    dns_calls = {"count": 0}
+
+    def fake_getaddrinfo(*args, **kwargs):
+        dns_calls["count"] += 1
+        return [(2, 1, 6, "", ("93.184.216.34", 443))]
+
+    monkeypatch.setattr(main_module.socket, "getaddrinfo", fake_getaddrinfo)
+
+    def fake_pinned_request(*, target, host, pinned_ip, port, timeout):
+        assert target == "https://example.com/health?mode=bounded"
+        assert host == "example.com"
+        assert pinned_ip == "93.184.216.34"
+        assert port == 443
+        assert timeout == 2
+        return 200, b"ok"
+
+    monkeypatch.setattr(main_module, "_request_pinned_https", fake_pinned_request)
 
     response = client.get("/api/v1/external/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "host": "example.com", "http_status": 200}
+    assert dns_calls["count"] == 1
