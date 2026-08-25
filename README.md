@@ -54,12 +54,37 @@ Branch protection/rulesets are separate GitHub settings controls. CI checks comp
 - Knowledge-item CRUD operations
 - Keyword search and lifecycle status filtering
 - fail-closed environment-backed bearer authentication for `/api/v1/*`
-- input validation and provenance hashing
+- input validation, auditable data-origin metadata, and provenance hashing
+- governed OpenAI Agents SDK evidence-answer path
+- structured AI output with evidence-ID validation
+- privacy-preserving AI audit events using question hashes instead of raw questions
 - Docker and Docker Compose for local verification
 - automated tests and GitHub Actions CI
 - repository policy scanning for secrets and prohibited file types
 
 The bearer-token gate is a **pre-pilot local control only**. It is not enterprise SSO, RBAC, MFA, identity federation, user lifecycle management, access certification, or institutional authorization.
+
+## Governed OpenAI evidence path
+
+The optional `/api/v1/ai/evidence-answer` endpoint is fail-closed and is intended only for controlled pre-pilot testing.
+
+Its evidence boundary is intentionally stricter than the normal knowledge API:
+
+- only records with `status=reviewed` are eligible;
+- only records with `sensitivity=public` are eligible for transmission to the model provider;
+- only `data_origin=synthetic` or `data_origin=public` records are eligible; `approved_low_sensitivity` and `unverified_legacy` records remain excluded from this provider path;
+- transformed records must be `verified_against_original`;
+- provenance hashing binds the data-origin metadata as part of the evidence identity;
+- approval references are not included in the model evidence packet;
+- no eligible evidence means no provider call is made;
+- model-generated evidence IDs are validated against the exact candidate set before a response is released;
+- Agents SDK tracing is disabled for this path;
+- model responses are requested with `store=False`;
+- the local AI audit table stores a SHA-256 hash of the question, event status, model name, and evidence IDs, not the raw question or model answer.
+
+The path also requires an explicit `ASA_OPENAI_PREPILOT_ENABLED=true` runtime flag and a valid `OPENAI_API_KEY` supplied through the runtime environment or an approved secret manager. **Never commit an API key to this repository.**
+
+This integration is an **Internal Test Only** capability. It does not establish approved enterprise AI-provider terms, company-data authorization, production deployment, institutional approval, Enterprise SSO/RBAC, KMS/HSM, or a completed independent security assessment.
 
 ## Run locally
 
@@ -78,6 +103,8 @@ uvicorn app.main:app --reload
 
 Open `http://127.0.0.1:8000/docs`. Calls to `/api/v1/*` must include `Authorization: Bearer <token>`. The unauthenticated `/health` endpoint remains available only for bounded local health checks and does not return stored knowledge content. These local flags and the bearer token describe only an explicitly prepared local internal-test context; they do not establish production readiness or institutional approval.
 
+To test the OpenAI evidence path, configure the API key outside the repository and explicitly enable the pre-pilot AI gate for that runtime. Do not place the key in source files, commits, issue comments, logs, or public workflow configuration.
+
 ## Run with Docker
 
 ```bash
@@ -95,10 +122,13 @@ ruff check app tests scripts
 PYTHONPATH=. pytest -q
 ```
 
+The automated AI-path tests use a synthetic credential-shaped value and a mocked Agents SDK run. CI does not require or use a real OpenAI API key, and successful CI does not prove live provider connectivity.
+
 ## Main endpoints
 
 - `GET /health` — bounded unauthenticated local health check
 - `GET /api/v1/external/health` — authenticated and additionally fail-closed by external-connection controls
+- `GET /api/v1/ai/evidence-answer?q=...` — authenticated, reviewed-public-evidence-only, explicitly gated pre-pilot AI path
 - `POST /api/v1/knowledge` — authenticated
 - `GET /api/v1/knowledge?q=term&status=reviewed` — authenticated
 - `GET /api/v1/knowledge/{id}` — authenticated
