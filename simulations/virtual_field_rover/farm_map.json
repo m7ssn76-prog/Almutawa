@@ -9,6 +9,30 @@
     "store_person_media": false,
     "open_area_mode": "privacy_yield"
   },
+  "flexible_environment": {
+    "layout_mode": "modular",
+    "distributed_storage": true,
+    "utility_routes_integrated_with_decor": true,
+    "rover_dock": {
+      "zone_id": "PRIVATE-CORE",
+      "charging": "simulation_only",
+      "weather_protection": true,
+      "autonomous_departure": false
+    },
+    "protected_storage": {
+      "zone_id": "PRIVATE-CORE",
+      "integrated_with_decor": true,
+      "authorized_access_only": true,
+      "access_monitoring": "simulation_only",
+      "hazardous_materials_allowed": false
+    },
+    "resilience": {
+      "local_fallback_on_network_loss": true,
+      "energy_saver_on_low_battery": true,
+      "degraded_mode_on_sensor_loss": true,
+      "physical_actuation_without_human_approval": false
+    }
+  },
   "zones": [
     {"id":"PRIVATE-CORE","type":"private_authorized","x1":0,"y1":0,"x2":9,"y2":9},
     {"id":"IRRIGATION","type":"private_authorized","x1":10,"y1":0,"x2":15,"y2":9},
