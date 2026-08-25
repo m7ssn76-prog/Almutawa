@@ -98,11 +98,13 @@ The external connection path requires all of the following at runtime:
 - an `ASA_EXTERNAL_URL` using HTTPS only;
 - the target host explicitly present in `ASA_EXTERNAL_ALLOWED_HOSTS`;
 - no username or password embedded in the URL;
-- DNS resolution that does not return private, loopback, link-local, multicast, reserved, or unspecified addresses;
+- DNS resolution in which every returned address is globally routable and none is private, loopback, link-local, multicast, reserved, or unspecified;
+- the actual TCP/TLS connection pinned to an IP address from that validated DNS result, preventing a second hostname resolution from changing the connection target after validation;
+- TLS hostname verification against the original allowlisted hostname even though the TCP peer is pinned to the validated IP;
 - an operational capability gate;
 - a bounded connection timeout between 1 and 10 seconds;
 - a maximum accepted external response size of 65,536 bytes;
-- redirects blocked by the client.
+- redirects not followed by the bounded HTTP client.
 
 Secrets and credentials must be provided only through an approved runtime secret manager or environment mechanism and must never be committed to the repository. A passing external probe demonstrates only that the configured endpoint was reachable under these controls; it does not establish institutional approval, data-owner approval, security certification, or production readiness.
 
