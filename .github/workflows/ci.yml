@@ -178,6 +178,10 @@ jobs:
 
           base = 'http://127.0.0.1:8000'
           token = os.environ['ASA_TEST_TOKEN']
+          headers = {
+              'Authorization': f'Bearer {token}',
+              'Content-Type': 'application/json',
+          }
 
           try:
               urllib.request.urlopen(base + '/api/v1/knowledge', timeout=5)
@@ -186,26 +190,45 @@ jobs:
           else:
               raise AssertionError('Unauthenticated API request unexpectedly succeeded')
 
+          missing_approval = json.dumps({
+              'title': 'Approval gate probe',
+              'content': 'Synthetic low-sensitivity approval-path probe',
+              'data_origin': 'approved_low_sensitivity',
+              'sensitivity': 'internal',
+          }).encode('utf-8')
+          bad_request = urllib.request.Request(
+              base + '/api/v1/knowledge',
+              data=missing_approval,
+              method='POST',
+              headers=headers,
+          )
+          try:
+              urllib.request.urlopen(bad_request, timeout=5)
+          except urllib.error.HTTPError as exc:
+              assert exc.code == 422, exc.code
+          else:
+              raise AssertionError('Approved low-sensitivity data was accepted without approval reference')
+
           payload = json.dumps({
               'title': 'CI persistence probe',
               'content': 'Synthetic internal-test persistence record',
               'purpose': 'runtime_persistence_verification',
               'sensitivity': 'internal',
               'transformation_state': 'original',
+              'data_origin': 'synthetic',
           }).encode('utf-8')
           request = urllib.request.Request(
               base + '/api/v1/knowledge',
               data=payload,
               method='POST',
-              headers={
-                  'Authorization': f'Bearer {token}',
-                  'Content-Type': 'application/json',
-              },
+              headers=headers,
           )
           with urllib.request.urlopen(request, timeout=5) as response:
               assert response.status == 201
               created = json.load(response)
           assert len(created['provenance_hash']) == 64
+          assert created['data_origin'] == 'synthetic'
+          assert created['approval_reference'] is None
           Path('/tmp/asa-item-id').write_text(str(created['id']), encoding='utf-8')
           PY
 
@@ -229,6 +252,8 @@ jobs:
               persisted = json.load(response)
           assert persisted['title'] == 'CI persistence probe'
           assert persisted['purpose'] == 'runtime_persistence_verification'
+          assert persisted['data_origin'] == 'synthetic'
+          assert persisted['approval_reference'] is None
           PY
 
-          echo 'Runtime HTTP, authentication, CRUD write/read, container restart, SQLite persistence, read-only rootfs, capability drop, no-new-privileges, and PID limit verification passed.'
+          echo 'Runtime HTTP, authentication, public-safe data-origin gating, CRUD write/read, container restart, SQLite persistence, read-only rootfs, capability drop, no-new-privileges, and PID limit verification passed.'
