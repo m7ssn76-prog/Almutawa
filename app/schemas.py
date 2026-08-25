@@ -22,6 +22,7 @@ DataOrigin = Literal[
     "approved_low_sensitivity",
     "unverified_legacy",
 ]
+ProvenanceVersion = Literal["legacy-v0", "canonical-json-v1"]
 EvidenceAnswerStatus = Literal["answered", "insufficient_evidence"]
 
 
@@ -73,6 +74,7 @@ class KnowledgeItem(BaseModel):
     data_origin: DataOrigin
     approval_reference: str | None
     provenance_hash: str
+    provenance_version: ProvenanceVersion
     created_at: str
     updated_at: str
 
@@ -87,6 +89,7 @@ class EvidenceCitation(BaseModel):
     id: int
     title: str
     provenance_hash: str
+    provenance_version: ProvenanceVersion
 
 
 class EvidenceAnswerResponse(BaseModel):

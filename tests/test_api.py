@@ -112,10 +112,12 @@ def test_knowledge_crud(client: TestClient) -> None:
     assert created.status_code == 201
     item_id = created.json()["id"]
     assert len(created.json()["provenance_hash"]) == 64
+    assert created.json()["provenance_version"] == "canonical-json-v1"
 
     fetched = client.get(f"/api/v1/knowledge/{item_id}")
     assert fetched.status_code == 200
     assert fetched.json()["title"] == "Welding lesson"
+    assert fetched.json()["provenance_version"] == "canonical-json-v1"
 
     updated = client.patch(
         f"/api/v1/knowledge/{item_id}",
@@ -123,12 +125,37 @@ def test_knowledge_crud(client: TestClient) -> None:
     )
     assert updated.status_code == 200
     assert updated.json()["status"] == "archived"
+    assert updated.json()["provenance_version"] == "canonical-json-v1"
 
     deleted = client.delete(f"/api/v1/knowledge/{item_id}")
     assert deleted.status_code == 204
 
     missing = client.get(f"/api/v1/knowledge/{item_id}")
     assert missing.status_code == 404
+
+
+def test_canonical_provenance_hash_preserves_field_boundaries() -> None:
+    common = {
+        "source_type": "text",
+        "purpose": "boundary test",
+        "sensitivity": "internal",
+        "transformation_state": "original",
+        "data_origin": "synthetic",
+        "approval_reference": None,
+    }
+    first = main_module._provenance_hash(
+        title="alpha\nbeta",
+        content="gamma",
+        **common,
+    )
+    second = main_module._provenance_hash(
+        title="alpha",
+        content="beta\ngamma",
+        **common,
+    )
+    assert first != second
+    assert len(first) == 64
+    assert len(second) == 64
 
 
 def test_search_and_validation(client: TestClient) -> None:
@@ -281,6 +308,46 @@ def test_output_redacts_legacy_secret(client: TestClient) -> None:
     response = client.get(f"/api/v1/knowledge/{item_id}")
     assert response.status_code == 200
     assert response.json()["content"] == "[REDACTED:SENSITIVE]"
+    assert response.json()["provenance_version"] == "legacy-v0"
+
+
+def test_legacy_record_moves_to_canonical_hash_only_after_update(client: TestClient) -> None:
+    with db.get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO knowledge_items (
+                title, content, status, source_type, purpose,
+                sensitivity, transformation_state, provenance_hash
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "Legacy safe record",
+                "Legacy synthetic-style content with unverified origin",
+                "draft",
+                "text",
+                "legacy migration",
+                "internal",
+                "original",
+                "legacy-hash",
+            ),
+        )
+        conn.commit()
+        item_id = cur.lastrowid
+
+    before = client.get(f"/api/v1/knowledge/{item_id}")
+    assert before.status_code == 200
+    assert before.json()["provenance_version"] == "legacy-v0"
+    assert before.json()["data_origin"] == "unverified_legacy"
+
+    updated = client.patch(
+        f"/api/v1/knowledge/{item_id}",
+        json={"status": "archived"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["provenance_version"] == "canonical-json-v1"
+    assert updated.json()["data_origin"] == "unverified_legacy"
+    assert len(updated.json()["provenance_hash"]) == 64
 
 
 def test_update_cannot_introduce_secret(client: TestClient) -> None:

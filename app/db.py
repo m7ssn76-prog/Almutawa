@@ -66,6 +66,7 @@ def init_db() -> None:
                 data_origin TEXT NOT NULL DEFAULT 'unverified_legacy',
                 approval_reference TEXT,
                 provenance_hash TEXT NOT NULL DEFAULT '',
+                provenance_version TEXT NOT NULL DEFAULT 'legacy-v0',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -93,6 +94,13 @@ def init_db() -> None:
         )
         _ensure_column(conn, "approval_reference", "TEXT")
         _ensure_column(conn, "provenance_hash", "TEXT NOT NULL DEFAULT ''")
+        # Pre-versioning rows retain their historical hash semantics. They are
+        # not silently recomputed or promoted to the canonical algorithm.
+        _ensure_column(
+            conn,
+            "provenance_version",
+            "TEXT NOT NULL DEFAULT 'legacy-v0'",
+        )
         _ensure_ai_audit_column(
             conn,
             "question_data_origin",
