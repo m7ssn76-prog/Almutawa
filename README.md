@@ -10,29 +10,42 @@ This project is proprietary and is not released under an open-source license. No
 
 This repository is an independent project. It is not an official product, system, endorsement, or publication of any employer, customer, government entity, or other organization.
 
-## Confidentiality and data boundary
+## PUBLIC-SAFE REPOSITORY MODE
 
-The repository must contain only:
+This repository is intentionally maintained as a **public-safe technical repository**. Public visibility is not permission to publish protected information and does not grant open-source rights.
+
+Every committed byte must be treated as publicly accessible. The repository may contain only:
 
 - synthetic test data;
-- public information that is lawful to reuse; or
-- low-sensitivity material that has explicit written approval for this exact purpose.
+- public information that is lawful to reuse;
+- project-owned technical material cleared for public disclosure; or
+- low-sensitivity material with explicit written approval for this exact public purpose.
+
+Protected, confidential, restricted, operational, personal, customer, employer, supplier, or otherwise non-public material must **never** be committed here. Any protected development must occur in a separate private or institutionally approved environment with its own access controls and review.
+
+Connected GitHub metadata verified on 25 August 2026 reports this repository as `public`. Repository visibility and copyright/licensing are separate controls: public visibility does not make this project open source.
+
+## Confidentiality and data boundary
+
+The repository must contain only material permitted by PUBLIC-SAFE REPOSITORY MODE.
 
 The following are prohibited:
 
 - employer or customer documents, procedures, drawings, specifications, exports, screenshots, or internal communications;
-- confidential, restricted, proprietary, operational, personal, or sensitive data;
+- confidential, restricted, proprietary, operational, personal, or sensitive data not explicitly cleared for public disclosure;
 - internal URLs, tenant identifiers, system names, credentials, tokens, passwords, API keys, private keys, or connection strings;
 - unapproved logos, trademarks, branding, or material that could imply organizational approval;
 - production database files, logs, backups, recordings, or user uploads.
 
 See [DATA_HANDLING.md](DATA_HANDLING.md), [PUBLICATION_POLICY.md](PUBLICATION_POLICY.md), and [SECURITY.md](SECURITY.md).
 
-## Publication rule
+## Evidence freshness rule
 
-Protected development is intended to take place in a **private repository**. Public deployment, public demonstrations, source publication, or sharing with third parties is prohibited unless the owner completes a documented confidentiality, security, legal/IP, and data review.
+Dated records under `.asa/`, historical workflow results, prior connector capability notes, automation records, and earlier visibility statements are **historical evidence snapshots**. They must not be treated as the current runtime, repository, automation, permission, or deployment state without a new live verification.
 
-**Visibility verification note:** connected GitHub metadata checked on 25 August 2026 currently reports this repository as `public`. Until repository metadata independently reports `private`, treat all repository contents as publicly visible and keep only synthetic, lawful public, or explicitly approved low-sensitivity material here. Moving protected development to a private repository remains a separate repository-setting action. Branch protection/rulesets are also separate GitHub controls; CI checks complement them but do not substitute for them.
+Current-state claims must be tied to current GitHub metadata, the relevant commit SHA, and the corresponding current status/check evidence. A historical `success`, `active`, `public`, `private`, `read-only`, or similar state does not automatically remain true later.
+
+Branch protection/rulesets are separate GitHub settings controls. CI checks complement them but do not substitute for them.
 
 ## Included in the current technical draft
 
