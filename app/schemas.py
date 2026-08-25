@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # Pre-pilot API states only. "approved" is intentionally excluded until
 # authenticated RBAC and an authorized approval workflow are implemented.
@@ -15,6 +15,7 @@ TransformationState = Literal[
     "uncertain",
     "conflict",
 ]
+DataOrigin = Literal["synthetic", "public", "approved_low_sensitivity"]
 EvidenceAnswerStatus = Literal["answered", "insufficient_evidence"]
 
 
@@ -26,6 +27,20 @@ class KnowledgeCreate(BaseModel):
     purpose: str = Field(default="knowledge_management", min_length=3, max_length=200)
     sensitivity: Sensitivity = "internal"
     transformation_state: TransformationState = "original"
+    data_origin: DataOrigin = "synthetic"
+    approval_reference: str | None = Field(default=None, min_length=3, max_length=200)
+
+    @model_validator(mode="after")
+    def validate_public_safe_origin(self) -> "KnowledgeCreate":
+        if self.data_origin == "approved_low_sensitivity" and not self.approval_reference:
+            raise ValueError(
+                "approval_reference is required for approved_low_sensitivity data"
+            )
+        if self.data_origin != "approved_low_sensitivity" and self.approval_reference is not None:
+            raise ValueError(
+                "approval_reference is only allowed for approved_low_sensitivity data"
+            )
+        return self
 
 
 class KnowledgeUpdate(BaseModel):
@@ -36,6 +51,8 @@ class KnowledgeUpdate(BaseModel):
     purpose: str | None = Field(default=None, min_length=3, max_length=200)
     sensitivity: Sensitivity | None = None
     transformation_state: TransformationState | None = None
+    data_origin: DataOrigin | None = None
+    approval_reference: str | None = Field(default=None, min_length=3, max_length=200)
 
 
 class KnowledgeItem(BaseModel):
@@ -47,6 +64,8 @@ class KnowledgeItem(BaseModel):
     purpose: str
     sensitivity: Sensitivity
     transformation_state: TransformationState
+    data_origin: DataOrigin
+    approval_reference: str | None
     provenance_hash: str
     created_at: str
     updated_at: str
