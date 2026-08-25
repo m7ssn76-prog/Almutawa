@@ -149,6 +149,12 @@ REQUIRED_PUBLIC_SAFE_MARKERS = {
 
 AUDIT_POLICY = Path(".asa/audit-policy.json")
 SELF = Path("scripts/repo_policy_check.py")
+PINNED_PYTHON_BASE = re.compile(
+    r"^FROM\s+python:3\.12\.\d+-slim@sha256:[0-9a-f]{64}\s*$"
+)
+PINNED_REQUIREMENT = re.compile(
+    r"^[A-Za-z0-9_.-]+(?:\[[A-Za-z0-9_,.-]+\])?==[^=\s]+$"
+)
 
 
 def iter_files() -> list[Path]:
@@ -205,8 +211,50 @@ def validate_public_safe_governance() -> list[str]:
     return violations
 
 
+def validate_supply_chain_pinning() -> list[str]:
+    violations: list[str] = []
+
+    dockerfile = ROOT / "Dockerfile"
+    if not dockerfile.is_file():
+        violations.append("missing Dockerfile")
+    else:
+        first_nonempty = next(
+            (
+                line.strip()
+                for line in dockerfile.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ),
+            "",
+        )
+        if not PINNED_PYTHON_BASE.fullmatch(first_nonempty):
+            violations.append(
+                "Dockerfile base image must pin Python 3.12 patch version and sha256 digest"
+            )
+
+    for relative in (Path("requirements.txt"), Path("requirements-dev.txt")):
+        path = ROOT / relative
+        if not path.is_file():
+            violations.append(f"missing dependency file: {relative}")
+            continue
+        for line_number, raw_line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if relative.name == "requirements-dev.txt" and line == "-r requirements.txt":
+                continue
+            if not PINNED_REQUIREMENT.fullmatch(line):
+                violations.append(
+                    f"dependency must use an exact == pin: {relative}:{line_number}"
+                )
+
+    return violations
+
+
 def scan() -> list[str]:
     violations = validate_public_safe_governance()
+    violations.extend(validate_supply_chain_pinning())
 
     for relative in iter_files():
         path = ROOT / relative
