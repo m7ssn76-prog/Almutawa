@@ -1,0 +1,119 @@
+{
+  "profiles": [
+    {
+      "environment_id": "ENV-AGRI-001",
+      "environment_type": "agriculture",
+      "display_name": "Synthetic Agricultural Environment",
+      "real_world_location": null,
+      "incident_probability": 0.035,
+      "privacy_yield_enabled": true,
+      "physical_actuation": false,
+      "person_tracking": false,
+      "facial_recognition": false,
+      "zones": [
+        {"id": "AG-PRIVATE", "type": "private_authorized", "x1": 0, "y1": 0, "x2": 5, "y2": 5},
+        {"id": "AG-OPEN", "type": "open_privacy_safe", "x1": 6, "y1": 0, "x2": 10, "y2": 5}
+      ],
+      "waypoints": [{"x": 1, "y": 1}, {"x": 3, "y": 3}, {"x": 7, "y": 2}, {"x": 9, "y": 4}],
+      "sensors": {
+        "temperature_c": {"base": 31.0, "noise": 1.2, "incident_delta": 10.0},
+        "humidity_pct": {"base": 45.0, "noise": 3.0, "incident_delta": 25.0},
+        "soil_moisture_pct": {"base": 38.0, "noise": 2.5, "incident_delta": -25.0},
+        "air_quality_index": {"base": 42.0, "noise": 4.0, "incident_delta": 110.0},
+        "light_lux_k": {"base": 35.0, "noise": 5.0, "incident_delta": -25.0}
+      }
+    },
+    {
+      "environment_id": "ENV-WH-001",
+      "environment_type": "warehouse",
+      "display_name": "Synthetic Warehouse Environment",
+      "real_world_location": null,
+      "incident_probability": 0.03,
+      "privacy_yield_enabled": true,
+      "physical_actuation": false,
+      "person_tracking": false,
+      "facial_recognition": false,
+      "zones": [
+        {"id": "WH-STORAGE", "type": "private_authorized", "x1": 0, "y1": 0, "x2": 5, "y2": 5},
+        {"id": "WH-DOCK", "type": "open_privacy_safe", "x1": 6, "y1": 0, "x2": 10, "y2": 5}
+      ],
+      "waypoints": [{"x": 1, "y": 2}, {"x": 4, "y": 4}, {"x": 7, "y": 1}, {"x": 9, "y": 3}],
+      "sensors": {
+        "temperature_c": {"base": 24.0, "noise": 0.8, "incident_delta": 9.0},
+        "humidity_pct": {"base": 42.0, "noise": 2.0, "incident_delta": 22.0},
+        "door_open_ratio": {"base": 0.10, "noise": 0.03, "incident_delta": 0.65},
+        "equipment_vibration": {"base": 1.0, "noise": 0.15, "incident_delta": 2.5},
+        "air_quality_index": {"base": 35.0, "noise": 3.0, "incident_delta": 95.0}
+      }
+    },
+    {
+      "environment_id": "ENV-URBAN-001",
+      "environment_type": "urban_green",
+      "display_name": "Synthetic Street and Urban Green Environment",
+      "real_world_location": null,
+      "incident_probability": 0.025,
+      "privacy_yield_enabled": true,
+      "physical_actuation": false,
+      "person_tracking": false,
+      "facial_recognition": false,
+      "zones": [
+        {"id": "UR-MAINT", "type": "private_authorized", "x1": 0, "y1": 0, "x2": 5, "y2": 5},
+        {"id": "UR-PUBLIC", "type": "open_privacy_safe", "x1": 6, "y1": 0, "x2": 10, "y2": 5}
+      ],
+      "waypoints": [{"x": 2, "y": 2}, {"x": 5, "y": 4}, {"x": 7, "y": 2}, {"x": 10, "y": 4}],
+      "sensors": {
+        "surface_temperature_c": {"base": 38.0, "noise": 1.5, "incident_delta": 12.0},
+        "air_quality_index": {"base": 55.0, "noise": 5.0, "incident_delta": 120.0},
+        "water_accumulation_index": {"base": 0.05, "noise": 0.02, "incident_delta": 0.70},
+        "lighting_health_pct": {"base": 98.0, "noise": 1.0, "incident_delta": -50.0},
+        "green_area_moisture_pct": {"base": 40.0, "noise": 3.0, "incident_delta": -25.0}
+      }
+    },
+    {
+      "environment_id": "ENV-IND-001",
+      "environment_type": "industrial",
+      "display_name": "Synthetic Industrial Environment",
+      "real_world_location": null,
+      "incident_probability": 0.03,
+      "privacy_yield_enabled": true,
+      "physical_actuation": false,
+      "person_tracking": false,
+      "facial_recognition": false,
+      "zones": [
+        {"id": "IN-PROCESS", "type": "private_authorized", "x1": 0, "y1": 0, "x2": 5, "y2": 5},
+        {"id": "IN-ACCESS", "type": "open_privacy_safe", "x1": 6, "y1": 0, "x2": 10, "y2": 5}
+      ],
+      "waypoints": [{"x": 1, "y": 1}, {"x": 4, "y": 2}, {"x": 7, "y": 3}, {"x": 9, "y": 4}],
+      "sensors": {
+        "equipment_temperature_c": {"base": 48.0, "noise": 1.5, "incident_delta": 18.0},
+        "vibration_rms": {"base": 1.2, "noise": 0.12, "incident_delta": 3.2},
+        "acoustic_anomaly_index": {"base": 0.10, "noise": 0.03, "incident_delta": 0.75},
+        "air_quality_index": {"base": 48.0, "noise": 4.0, "incident_delta": 105.0},
+        "power_load_index": {"base": 0.65, "noise": 0.05, "incident_delta": 0.40}
+      }
+    },
+    {
+      "environment_id": "ENV-DIG-001",
+      "environment_type": "software_system",
+      "display_name": "Synthetic Native Digital Environment",
+      "real_world_location": null,
+      "incident_probability": 0.025,
+      "privacy_yield_enabled": false,
+      "physical_actuation": false,
+      "person_tracking": false,
+      "facial_recognition": false,
+      "zones": [
+        {"id": "DG-CODE", "type": "system_internal", "x1": 0, "y1": 0, "x2": 5, "y2": 5},
+        {"id": "DG-CI", "type": "system_internal", "x1": 6, "y1": 0, "x2": 10, "y2": 5}
+      ],
+      "waypoints": [{"x": 1, "y": 1}, {"x": 4, "y": 4}, {"x": 7, "y": 1}, {"x": 9, "y": 4}],
+      "sensors": {
+        "workflow_failure_ratio": {"base": 0.02, "noise": 0.01, "incident_delta": 0.45},
+        "dependency_risk_index": {"base": 0.08, "noise": 0.02, "incident_delta": 0.65},
+        "latency_index": {"base": 0.20, "noise": 0.03, "incident_delta": 0.55},
+        "evidence_staleness_index": {"base": 0.10, "noise": 0.02, "incident_delta": 0.60},
+        "integrity_error_ratio": {"base": 0.01, "noise": 0.005, "incident_delta": 0.35}
+      }
+    }
+  ]
+}
