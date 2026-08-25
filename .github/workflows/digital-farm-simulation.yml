@@ -11,6 +11,12 @@ on:
       - 'simulations/virtual_field_rover/**'
       - '.github/workflows/digital-farm-simulation.yml'
   workflow_dispatch:
+    inputs:
+      verify_openai:
+        description: 'Run one bounded OpenAI API connectivity check'
+        required: false
+        default: false
+        type: boolean
   schedule:
     - cron: '17 * * * *'
 
@@ -111,6 +117,54 @@ jobs:
           assert len(row['provenance_hash']) == 64
           assert 'real_farm_connected' in row['content']
           print('Digital Farm -> ASA/AOIP governed bridge: PASS')
+          PY
+      - name: Verify OpenAI API connectivity (manual only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.verify_openai }}
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ASA_OPENAI_MODEL: gpt-5.6-sol
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from urllib.error import HTTPError, URLError
+          from urllib.request import Request, urlopen
+
+          key = os.environ.get('OPENAI_API_KEY', '').strip()
+          if not key:
+              raise SystemExit('OPENAI_API_KEY GitHub Secret is not configured')
+
+          body = json.dumps({
+              'model': os.environ.get('ASA_OPENAI_MODEL', 'gpt-5.6-sol'),
+              'input': 'Return exactly: OK',
+              'max_output_tokens': 16,
+              'store': False,
+          }).encode('utf-8')
+          req = Request(
+              'https://api.openai.com/v1/responses',
+              data=body,
+              method='POST',
+              headers={
+                  'Authorization': f'Bearer {key}',
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+              },
+          )
+          try:
+              with urlopen(req, timeout=30) as response:
+                  payload = json.loads(response.read().decode('utf-8'))
+                  status = response.status
+          except HTTPError as exc:
+              detail = exc.read().decode('utf-8', errors='replace')[:1000]
+              raise SystemExit(f'OpenAI API connectivity failed: HTTP {exc.code}: {detail}') from exc
+          except URLError as exc:
+              raise SystemExit('OpenAI API connectivity failed: network error') from exc
+
+          if status != 200 or not payload.get('id'):
+              raise SystemExit('OpenAI API connectivity failed: invalid response')
+          print('OpenAI API bounded connectivity: PASS')
+          print('model:', payload.get('model'))
+          print('response_id_prefix:', str(payload.get('id'))[:12])
           PY
       - name: Stop local API
         if: always()
