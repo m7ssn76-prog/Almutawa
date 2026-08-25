@@ -396,7 +396,9 @@ def test_ai_data_terms_gate_blocks_provider_use(
 ) -> None:
     _create_reviewed_public_ai_evidence(client)
     monkeypatch.setenv("ASA_OPENAI_PREPILOT_ENABLED", "true")
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-provider-boundary-000000000000000000")
+    monkeypatch.setenv(
+        "OPENAI_API_KEY", "synthetic-provider-placeholder-value-000000000000000000"
+    )
     monkeypatch.delenv("ASA_OPENAI_DATA_TERMS_CONFIRMED", raising=False)
 
     response = client.get(
@@ -437,7 +439,9 @@ def test_ai_provider_path_runs_only_after_all_privacy_gates(
     evidence_id = _create_reviewed_public_ai_evidence(client)
     monkeypatch.setenv("ASA_OPENAI_PREPILOT_ENABLED", "true")
     monkeypatch.setenv("ASA_OPENAI_DATA_TERMS_CONFIRMED", "true")
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-provider-boundary-000000000000000000")
+    monkeypatch.setenv(
+        "OPENAI_API_KEY", "synthetic-provider-placeholder-value-000000000000000000"
+    )
 
     class FakeResult:
         final_output = main_module.EvidenceAgentOutput(
