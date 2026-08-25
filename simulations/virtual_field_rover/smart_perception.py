@@ -12,6 +12,30 @@ def _is_finite_number(value: object) -> bool:
     )
 
 
+def apply_degraded_evidence_guard(result: dict) -> dict:
+    """Downgrade apparently normal results when some inputs were rejected.
+
+    Existing risk/anomaly states are preserved. The guard only makes evidence
+    quality explicit and never authorizes physical actuation.
+    """
+    details = result.get("details", {})
+    rejected = details.get("rejected", {}) if isinstance(details, dict) else {}
+
+    if rejected:
+        if result.get("state") == "NORMAL":
+            result["state"] = "DEGRADED_NORMAL"
+            result["decision"] = "VERIFY_INPUTS / OBSERVE"
+            result["reason"] = (
+                "القراءات المقبولة تبدو طبيعية، لكن بعض المدخلات رُفضت؛ "
+                "لا تُعامل الحالة كطبيعية كاملة قبل التحقق من جودة البيانات."
+            )
+        else:
+            result["evidence_quality_warning"] = (
+                "بعض المدخلات رُفضت؛ القرار الحالي قائم على الحساسات الصالحة فقط."
+            )
+    return result
+
+
 def _terminal(
     *,
     state: str,
@@ -30,7 +54,7 @@ def _terminal(
     }
     if details is not None:
         result["details"] = details
-    return result
+    return apply_degraded_evidence_guard(result)
 
 
 def smart_perception(
@@ -42,8 +66,11 @@ def smart_perception(
 ) -> dict:
     """Assess redundant sensors measuring the same physical quantity.
 
-    This is decision support only. It never performs physical actuation.
-    Sensors with different units or meanings must not be mixed in one call.
+    Invalid per-sensor inputs are rejected individually. A decision is made only
+    from the remaining valid sensors when at least two independently weighted
+    readings remain. This is decision support only and never performs physical
+    actuation. Sensors with different units or meanings must not be mixed in one
+    call.
     """
 
     if not _is_finite_number(baseline):
@@ -62,42 +89,36 @@ def smart_perception(
     severities = severities or {}
     reliabilities = reliabilities or {}
 
-    valid = {
-        key: float(value)
-        for key, value in sensor_values.items()
-        if _is_finite_number(value)
-    }
-    invalid_sensors = [key for key in sensor_values if key not in valid]
-
-    if len(valid) < 2:
-        return _terminal(
-            state="INSUFFICIENT_EVIDENCE",
-            decision="REQUEST_MORE_DATA",
-            reason="يلزم حساسان صالحان على الأقل قبل تأكيد الحالة",
-            details={
-                "values": valid,
-                "invalid_sensors": invalid_sensors,
-                "autonomous_physical_actuation": False,
-            },
-        )
-
+    valid: dict[str, float] = {}
     clean_reliabilities: dict[str, float] = {}
     clean_severities: dict[str, float] = {}
-    for key in valid:
+    rejected: dict[str, dict[str, str]] = {}
+
+    for key, value in sensor_values.items():
+        if not _is_finite_number(value):
+            rejected[key] = {
+                "field": "value",
+                "reason": "INVALID_SENSOR_VALUE",
+            }
+            continue
+
         reliability = reliabilities.get(key, 1.0)
-        severity = severities.get(key, 1)
         if not _is_finite_number(reliability) or not 0 <= float(reliability) <= 1:
-            return _terminal(
-                state="CONFIGURATION_ERROR",
-                decision="FIX_CONFIGURATION",
-                reason=f"موثوقية الحساس {key} يجب أن تكون بين 0 و1",
-            )
+            rejected[key] = {
+                "field": "reliability",
+                "reason": "OUT_OF_RANGE_0_1",
+            }
+            continue
+
+        severity = severities.get(key, 1)
         if not _is_finite_number(severity) or not 1 <= float(severity) <= 5:
-            return _terminal(
-                state="CONFIGURATION_ERROR",
-                decision="FIX_CONFIGURATION",
-                reason=f"شدة أثر الحساس {key} يجب أن تكون بين 1 و5",
-            )
+            rejected[key] = {
+                "field": "severity",
+                "reason": "OUT_OF_RANGE_1_5",
+            }
+            continue
+
+        valid[key] = float(value)
         clean_reliabilities[key] = float(reliability)
         clean_severities[key] = float(severity)
 
@@ -110,8 +131,9 @@ def smart_perception(
             reason="لا يوجد وزن موثوق كافٍ من حساسين مستقلين",
             details={
                 "values": valid,
-                "invalid_sensors": invalid_sensors,
                 "reliabilities": clean_reliabilities,
+                "severities": clean_severities,
+                "rejected": rejected,
                 "autonomous_physical_actuation": False,
             },
         )
@@ -207,7 +229,7 @@ def smart_perception(
             ((100 - anomaly_support) * evidence_quality) / 100
         )
 
-    return {
+    result = {
         "state": state,
         "confidence": state_confidence,
         "anomaly_support": anomaly_support,
@@ -224,7 +246,7 @@ def smart_perception(
             "anomalous": anomalous,
             "reliabilities": clean_reliabilities,
             "severities": clean_severities,
-            "invalid_sensors": invalid_sensors,
+            "rejected": rejected,
             "spread": spread,
             "directional_conflict": directional_conflict,
             "mixed_conflict": mixed_conflict,
@@ -233,3 +255,4 @@ def smart_perception(
             "autonomous_physical_actuation": False,
         },
     }
+    return apply_degraded_evidence_guard(result)
