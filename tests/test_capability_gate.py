@@ -30,11 +30,19 @@ def ai_client(tmp_path, monkeypatch) -> Iterator[TestClient]:
         monkeypatch.setenv(name, "true")
     monkeypatch.setenv("ASA_API_BEARER_TOKEN", TEST_API_TOKEN)
     monkeypatch.setenv("ASA_OPENAI_PREPILOT_ENABLED", "true")
-    monkeypatch.setenv("OPENAI_API_KEY", "synthetic-openai-key-000000000000000000")
+    monkeypatch.setenv("ASA_OPENAI_DATA_TERMS_CONFIRMED", "true")
+    monkeypatch.setenv(
+        "OPENAI_API_KEY", "synthetic-provider-placeholder-value-000000000000000000"
+    )
     db.init_db()
 
     with TestClient(app) as test_client:
-        test_client.headers.update({"Authorization": f"Bearer {TEST_API_TOKEN}"})
+        test_client.headers.update(
+            {
+                "Authorization": f"Bearer {TEST_API_TOKEN}",
+                "X-ASA-Question-Data-Origin": "synthetic",
+            }
+        )
         yield test_client
 
 
@@ -62,6 +70,28 @@ def test_gate_reaches_operational_only_when_all_controls_pass() -> None:
     assert operational(gate)
 
 
+def test_ai_question_origin_is_required(ai_client: TestClient) -> None:
+    ai_client.headers.pop("X-ASA-Question-Data-Origin", None)
+    response = ai_client.get(
+        "/api/v1/ai/evidence-answer",
+        params={"q": "synthetic boundary question"},
+    )
+    assert response.status_code == 422
+    assert "public or synthetic" in response.json()["detail"]
+
+
+def test_ai_question_origin_rejects_internal_classification(
+    ai_client: TestClient,
+) -> None:
+    response = ai_client.get(
+        "/api/v1/ai/evidence-answer",
+        params={"q": "synthetic boundary question"},
+        headers={"X-ASA-Question-Data-Origin": "internal"},
+    )
+    assert response.status_code == 422
+    assert "public or synthetic" in response.json()["detail"]
+
+
 def test_ai_path_returns_without_provider_call_when_public_evidence_is_missing(
     ai_client: TestClient,
     monkeypatch,
@@ -79,6 +109,15 @@ def test_ai_path_returns_without_provider_call_when_public_evidence_is_missing(
     assert response.json()["status"] == "insufficient_evidence"
     assert response.json()["model"] is None
     assert response.json()["evidence"] == []
+
+    with db.get_conn() as conn:
+        audit = conn.execute(
+            "SELECT question_hash, question_data_origin, status FROM ai_audit_events ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    assert audit is not None
+    assert len(audit["question_hash"]) == 64
+    assert audit["question_data_origin"] == "synthetic"
+    assert audit["status"] == "insufficient_evidence"
 
 
 def test_ai_path_excludes_reviewed_internal_evidence(
@@ -163,6 +202,30 @@ def test_ai_path_is_fail_closed_when_feature_gate_is_disabled(
     assert response.json()["detail"] == "OpenAI pre-pilot path is disabled"
 
 
+def test_ai_path_is_fail_closed_when_data_terms_gate_is_disabled(
+    ai_client: TestClient,
+    monkeypatch,
+) -> None:
+    created = ai_client.post(
+        "/api/v1/knowledge",
+        json={
+            "title": "Public terms-gate note",
+            "content": "Synthetic public provider terms evidence",
+            "status": "reviewed",
+            "sensitivity": "public",
+        },
+    )
+    assert created.status_code == 201
+    monkeypatch.delenv("ASA_OPENAI_DATA_TERMS_CONFIRMED", raising=False)
+
+    response = ai_client.get(
+        "/api/v1/ai/evidence-answer",
+        params={"q": "provider terms evidence"},
+    )
+    assert response.status_code == 503
+    assert response.json()["detail"] == "OpenAI data-terms confirmation gate is closed"
+
+
 def test_ai_path_returns_structured_grounded_answer_and_audits_hash_only(
     ai_client: TestClient,
     monkeypatch,
@@ -184,6 +247,7 @@ def test_ai_path_returns_structured_grounded_answer_and_audits_hash_only(
         assert '"data_origin":"synthetic"' in prompt
         assert "approval_reference" not in prompt
         assert run_config.tracing_disabled is True
+        assert run_config.trace_include_sensitive_data is False
         assert agent.model_settings.store is False
         return SimpleNamespace(
             final_output=EvidenceAgentOutput(
@@ -208,10 +272,11 @@ def test_ai_path_returns_structured_grounded_answer_and_audits_hash_only(
 
     with db.get_conn() as conn:
         audit = conn.execute(
-            "SELECT question_hash, status, model, evidence_ids FROM ai_audit_events ORDER BY id DESC LIMIT 1"
+            "SELECT question_hash, question_data_origin, status, model, evidence_ids FROM ai_audit_events ORDER BY id DESC LIMIT 1"
         ).fetchone()
     assert audit is not None
     assert len(audit["question_hash"]) == 64
+    assert audit["question_data_origin"] == "synthetic"
     assert audit["status"] == "answered"
     assert audit["model"] == "gpt-5.6-sol"
     assert audit["evidence_ids"] == str(evidence_id)

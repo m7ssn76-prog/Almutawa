@@ -53,6 +53,7 @@ _MAX_AI_EVIDENCE_ITEMS = 5
 _MAX_AI_SCAN_ITEMS = 100
 _MAX_AI_EVIDENCE_CONTENT_CHARS = 4_000
 _DEFAULT_AI_MODEL = "gpt-5.6-sol"
+_ALLOWED_PROVIDER_QUESTION_ORIGINS = {"public", "synthetic"}
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -342,12 +343,35 @@ def _openai_model_name() -> str:
     return model
 
 
+def _validated_provider_question_origin(raw_origin: str | None) -> str:
+    """Require an explicit public/synthetic attestation before provider use.
+
+    This is a caller-supplied classification gate, not a DLP guarantee or an
+    institutional approval. Missing or broader classifications fail closed.
+    """
+    origin = (raw_origin or "").strip().lower()
+    if origin not in _ALLOWED_PROVIDER_QUESTION_ORIGINS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Question data origin must be explicitly classified as public or "
+                "synthetic before provider use"
+            ),
+        )
+    return origin
+
+
 def _require_openai_prepilot_runtime() -> None:
     gate_state = local_runtime_gate().evaluate()
     if gate_state is not GateState.OPERATIONAL:
         raise HTTPException(status_code=503, detail=f"Capability gate: {gate_state.value}")
     if not _env_flag("ASA_OPENAI_PREPILOT_ENABLED", default=False):
         raise HTTPException(status_code=503, detail="OpenAI pre-pilot path is disabled")
+    if not _env_flag("ASA_OPENAI_DATA_TERMS_CONFIRMED", default=False):
+        raise HTTPException(
+            status_code=503,
+            detail="OpenAI data-terms confirmation gate is closed",
+        )
 
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if len(api_key) < 20:
@@ -413,6 +437,7 @@ def _evidence_packet(items: list[KnowledgeItem]) -> str:
 def _record_ai_audit(
     *,
     question_hash: str,
+    question_data_origin: str,
     event_status: str,
     model: str,
     evidence_ids: list[int],
@@ -420,10 +445,18 @@ def _record_ai_audit(
     with get_conn() as conn:
         conn.execute(
             """
-            INSERT INTO ai_audit_events (question_hash, status, model, evidence_ids)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO ai_audit_events (
+                question_hash, question_data_origin, status, model, evidence_ids
+            )
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (question_hash, event_status, model, ",".join(str(item_id) for item_id in evidence_ids)),
+            (
+                question_hash,
+                question_data_origin,
+                event_status,
+                model,
+                ",".join(str(item_id) for item_id in evidence_ids),
+            ),
         )
         conn.commit()
 
@@ -486,6 +519,10 @@ def external_health() -> dict[str, str | int]:
 )
 async def evidence_answer(
     q: str = Query(min_length=3, max_length=500),
+    question_data_origin_header: str | None = Header(
+        default=None,
+        alias="X-ASA-Question-Data-Origin",
+    ),
 ) -> EvidenceAnswerResponse:
     """Answer only from reviewed public evidence under an explicit pre-pilot AI gate."""
     if _contains_secret(q):
@@ -493,11 +530,15 @@ async def evidence_answer(
     if _contains_prompt_injection(q):
         raise HTTPException(status_code=422, detail="Untrusted instruction content is blocked")
 
+    question_data_origin = _validated_provider_question_origin(
+        question_data_origin_header
+    )
     question_hash = _question_hash(q)
     candidates = _search_reviewed_public_evidence(q)
     if not candidates:
         _record_ai_audit(
             question_hash=question_hash,
+            question_data_origin=question_data_origin,
             event_status="insufficient_evidence",
             model="",
             evidence_ids=[],
@@ -521,7 +562,10 @@ async def evidence_answer(
         result = await Runner.run(
             agent,
             prompt,
-            run_config=RunConfig(tracing_disabled=True),
+            run_config=RunConfig(
+                tracing_disabled=True,
+                trace_include_sensitive_data=False,
+            ),
         )
         output = result.final_output
         if not isinstance(output, EvidenceAgentOutput):
@@ -529,6 +573,7 @@ async def evidence_answer(
     except Exception as exc:
         _record_ai_audit(
             question_hash=question_hash,
+            question_data_origin=question_data_origin,
             event_status="provider_error",
             model=model,
             evidence_ids=[],
@@ -540,6 +585,7 @@ async def evidence_answer(
     if any(item_id not in allowed for item_id in evidence_ids):
         _record_ai_audit(
             question_hash=question_hash,
+            question_data_origin=question_data_origin,
             event_status="evidence_validation_failed",
             model=model,
             evidence_ids=[],
@@ -549,6 +595,7 @@ async def evidence_answer(
     if output.status == "answered" and not evidence_ids:
         _record_ai_audit(
             question_hash=question_hash,
+            question_data_origin=question_data_origin,
             event_status="evidence_validation_failed",
             model=model,
             evidence_ids=[],
@@ -569,6 +616,7 @@ async def evidence_answer(
     answer = _redact_secrets(output.answer)
     _record_ai_audit(
         question_hash=question_hash,
+        question_data_origin=question_data_origin,
         event_status=output.status,
         model=model,
         evidence_ids=evidence_ids,
