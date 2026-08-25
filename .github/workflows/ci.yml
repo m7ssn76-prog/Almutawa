@@ -97,3 +97,128 @@ jobs:
           fi
       - name: Build local verification image
         run: docker build -t asa-aoip-knowledge-hub:test .
+      - name: Run container end-to-end and verify SQLite persistence
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          container_name="asa-ci-runtime-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          volume_name="asa-ci-data-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          token="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+          echo "::add-mask::$token"
+          export ASA_TEST_TOKEN="$token"
+
+          cleanup() {
+            docker rm -f "$container_name" >/dev/null 2>&1 || true
+            docker volume rm "$volume_name" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker volume create "$volume_name" >/dev/null
+
+          start_container() {
+            docker run -d \
+              --name "$container_name" \
+              -p 127.0.0.1:8000:8000 \
+              -e ASA_AOIP_DB_PATH=/data/asa_aoip.db \
+              -e ASA_API_BEARER_TOKEN="$token" \
+              -e ASA_GATE_AVAILABLE=true \
+              -e ASA_GATE_ELIGIBLE=true \
+              -e ASA_GATE_AUTHORIZED=true \
+              -e ASA_GATE_CONNECTED=true \
+              -e ASA_GATE_EXECUTED=true \
+              -e ASA_GATE_TESTED=true \
+              -e ASA_GATE_EVIDENCED=true \
+              -v "$volume_name:/data" \
+              asa-aoip-knowledge-hub:test >/dev/null
+          }
+
+          wait_for_health() {
+            for _ in $(seq 1 30); do
+              if curl --fail --silent --show-error http://127.0.0.1:8000/health >/tmp/asa-health.json; then
+                python - <<'PY'
+          import json
+          from pathlib import Path
+
+          health = json.loads(Path('/tmp/asa-health.json').read_text(encoding='utf-8'))
+          assert health == {
+              'status': 'ok',
+              'service': 'asa-aoip-knowledge-hub',
+              'database': 'ok',
+              'capability_gate': 'Operational',
+          }, health
+          PY
+                return 0
+              fi
+              sleep 1
+            done
+            docker logs "$container_name" || true
+            return 1
+          }
+
+          start_container
+          wait_for_health
+
+          python - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+
+          base = 'http://127.0.0.1:8000'
+          token = os.environ['ASA_TEST_TOKEN']
+
+          try:
+              urllib.request.urlopen(base + '/api/v1/knowledge', timeout=5)
+          except urllib.error.HTTPError as exc:
+              assert exc.code == 401, exc.code
+          else:
+              raise AssertionError('Unauthenticated API request unexpectedly succeeded')
+
+          payload = json.dumps({
+              'title': 'CI persistence probe',
+              'content': 'Synthetic internal-test persistence record',
+              'purpose': 'runtime_persistence_verification',
+              'sensitivity': 'internal',
+              'transformation_state': 'original',
+          }).encode('utf-8')
+          request = urllib.request.Request(
+              base + '/api/v1/knowledge',
+              data=payload,
+              method='POST',
+              headers={
+                  'Authorization': f'Bearer {token}',
+                  'Content-Type': 'application/json',
+              },
+          )
+          with urllib.request.urlopen(request, timeout=5) as response:
+              assert response.status == 201
+              created = json.load(response)
+          assert len(created['provenance_hash']) == 64
+          Path('/tmp/asa-item-id').write_text(str(created['id']), encoding='utf-8')
+          PY
+
+          docker rm -f "$container_name" >/dev/null
+          start_container
+          wait_for_health
+
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+          from pathlib import Path
+
+          item_id = Path('/tmp/asa-item-id').read_text(encoding='utf-8').strip()
+          request = urllib.request.Request(
+              f'http://127.0.0.1:8000/api/v1/knowledge/{item_id}',
+              headers={'Authorization': f"Bearer {os.environ['ASA_TEST_TOKEN']}"},
+          )
+          with urllib.request.urlopen(request, timeout=5) as response:
+              assert response.status == 200
+              persisted = json.load(response)
+          assert persisted['title'] == 'CI persistence probe'
+          assert persisted['purpose'] == 'runtime_persistence_verification'
+          PY
+
+          echo 'Runtime HTTP, authentication, CRUD write/read, container restart, and SQLite persistence verification passed.'
