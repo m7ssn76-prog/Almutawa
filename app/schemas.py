@@ -15,7 +15,13 @@ TransformationState = Literal[
     "uncertain",
     "conflict",
 ]
-DataOrigin = Literal["synthetic", "public", "approved_low_sensitivity"]
+InputDataOrigin = Literal["synthetic", "public", "approved_low_sensitivity"]
+DataOrigin = Literal[
+    "synthetic",
+    "public",
+    "approved_low_sensitivity",
+    "unverified_legacy",
+]
 EvidenceAnswerStatus = Literal["answered", "insufficient_evidence"]
 
 
@@ -27,7 +33,7 @@ class KnowledgeCreate(BaseModel):
     purpose: str = Field(default="knowledge_management", min_length=3, max_length=200)
     sensitivity: Sensitivity = "internal"
     transformation_state: TransformationState = "original"
-    data_origin: DataOrigin = "synthetic"
+    data_origin: InputDataOrigin = "synthetic"
     approval_reference: str | None = Field(default=None, min_length=3, max_length=200)
 
     @model_validator(mode="after")
@@ -51,7 +57,7 @@ class KnowledgeUpdate(BaseModel):
     purpose: str | None = Field(default=None, min_length=3, max_length=200)
     sensitivity: Sensitivity | None = None
     transformation_state: TransformationState | None = None
-    data_origin: DataOrigin | None = None
+    data_origin: InputDataOrigin | None = None
     approval_reference: str | None = Field(default=None, min_length=3, max_length=200)
 
 
