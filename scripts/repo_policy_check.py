@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -135,6 +136,18 @@ CODE_OR_CONFIG_SUFFIXES = {
     ".yml",
 }
 
+REQUIRED_PUBLIC_SAFE_MARKERS = {
+    Path("README.md"): (
+        "PUBLIC-SAFE REPOSITORY MODE",
+        "Evidence freshness rule",
+    ),
+    Path("PUBLICATION_POLICY.md"): (
+        "PUBLIC-SAFE REPOSITORY MODE",
+        "Evidence and status freshness",
+    ),
+}
+
+AUDIT_POLICY = Path(".asa/audit-policy.json")
 SELF = Path("scripts/repo_policy_check.py")
 
 
@@ -150,8 +163,50 @@ def iter_files() -> list[Path]:
     return sorted(files)
 
 
-def scan() -> list[str]:
+def validate_public_safe_governance() -> list[str]:
     violations: list[str] = []
+
+    for relative, markers in REQUIRED_PUBLIC_SAFE_MARKERS.items():
+        path = ROOT / relative
+        if not path.is_file():
+            violations.append(f"missing public-safe governance file: {relative}")
+            continue
+        text = path.read_text(encoding="utf-8")
+        for marker in markers:
+            if marker not in text:
+                violations.append(
+                    f"missing public-safe governance marker {marker!r}: {relative}"
+                )
+
+    policy_path = ROOT / AUDIT_POLICY
+    if not policy_path.is_file():
+        violations.append(f"missing audit policy: {AUDIT_POLICY}")
+        return violations
+
+    try:
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        violations.append(f"invalid audit policy JSON: {AUDIT_POLICY}: {exc}")
+        return violations
+
+    visibility_policy = policy.get("repository_visibility_policy", {})
+    if visibility_policy.get("mode") != "public_safe":
+        violations.append("audit policy repository visibility mode must be 'public_safe'")
+
+    freshness_rule = policy.get("freshness_rule", {})
+    if freshness_rule.get("dated_records") != "historical_snapshot":
+        violations.append("dated .asa records must be classified as historical_snapshot")
+    if freshness_rule.get("current_state_source") != "live_verification_required":
+        violations.append("current state must require live verification")
+
+    if policy.get("classification") != "Internal Test Only":
+        violations.append("audit policy classification must remain 'Internal Test Only'")
+
+    return violations
+
+
+def scan() -> list[str]:
+    violations = validate_public_safe_governance()
 
     for relative in iter_files():
         path = ROOT / relative
@@ -196,8 +251,8 @@ def main() -> int:
         print("Remove the protected material or obtain the required private review.")
         return 1
 
-    print("Repository policy check passed: no configured violations detected.")
-    print("This automated check does not replace human confidentiality review.")
+    print("Repository policy check passed: public-safe governance and configured content controls are satisfied.")
+    print("This automated check does not replace human confidentiality review or live GitHub-state verification.")
     return 0
 
 

@@ -1,7 +1,7 @@
 {
   "system_id": "ASA-GITHUB-AUDIT-001",
   "name": "ASA GitHub Evidence Audit",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "repository": {
     "full_name": "m7ssn76-prog/Almutawa",
     "repository_id": 1305663312,
@@ -11,7 +11,14 @@
   },
   "status": "implemented_github_actions_verified_internal_test",
   "classification": "Internal Test Only",
-  "purpose": "Create traceable evidence for repository activity without reading secrets or modifying external repositories.",
+  "purpose": "Create traceable evidence for repository activity without reading secrets, overstating current state, or modifying external repositories.",
+  "repository_visibility_policy": {
+    "mode": "public_safe",
+    "verified_visibility": "public",
+    "verified_date": "2026-08-25",
+    "rule": "Every committed byte must be safe for public access. Protected or non-public material must remain outside this repository in a separately approved private environment.",
+    "license_boundary": "Public visibility does not grant open-source rights or change copyright ownership."
+  },
   "evidence": {
     "id_prefix": "EV-GH-ASA",
     "hash_algorithm": "SHA-256",
@@ -22,6 +29,19 @@
     "record_repository_id": true,
     "hash_tracked_files": true,
     "verification_rule": "Internal Test Only requires a successful GitHub Actions evidence-audit run tied to the relevant commit."
+  },
+  "freshness_rule": {
+    "dated_records": "historical_snapshot",
+    "current_state_source": "live_verification_required",
+    "current_state_examples": [
+      "repository visibility",
+      "branch protection or ruleset state",
+      "workflow or CI status",
+      "connector capability",
+      "automation state",
+      "runtime or deployment state"
+    ],
+    "rule": "Historical records are preserved as evidence of what was true when recorded and must not be silently promoted to current state without a new live verification."
   },
   "allowed_operations": [
     "read_repository_metadata",
@@ -36,7 +56,8 @@
     "store_tokens_or_pat_values",
     "modify_external_repositories",
     "push_generated_evidence_back_to_repository",
-    "claim_production_or_institutional_approval_without_evidence"
+    "claim_production_or_institutional_approval_without_evidence",
+    "treat_historical_state_as_current_without_live_verification"
   ],
   "status_gate": {
     "design": "may be documented",
@@ -46,7 +67,7 @@
   },
   "chatgpt_integration": {
     "mode": "connected GitHub audit and evidence summarization",
-    "write_policy": "no GitHub write unless explicitly requested by ABM",
+    "write_policy": "GitHub mutation requires an explicit current user instruction and must be confirmed by resulting GitHub state. Tool availability is runtime context and must not be stored as a permanent capability claim.",
     "secret_policy": "never request, display, or store PAT/API secrets in repository files"
   }
 }
