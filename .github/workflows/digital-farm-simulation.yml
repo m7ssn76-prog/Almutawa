@@ -1,14 +1,16 @@
-name: Digital Farm Synthetic Monitor
+name: Digital Environment Synthetic Monitor
 
 on:
   pull_request:
     paths:
       - 'simulations/virtual_field_rover/**'
+      - 'simulations/digital_environment/**'
       - '.github/workflows/digital-farm-simulation.yml'
   push:
     branches: [main]
     paths:
       - 'simulations/virtual_field_rover/**'
+      - 'simulations/digital_environment/**'
       - '.github/workflows/digital-farm-simulation.yml'
   workflow_dispatch:
   schedule:
@@ -18,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: digital-farm-synthetic-monitor
+  group: digital-environment-synthetic-monitor
   cancel-in-progress: true
 
 jobs:
@@ -36,30 +38,36 @@ jobs:
       - name: Install governed API dependencies
         run: python -m pip install -r requirements-dev.txt
       - name: Compile
-        run: python -m compileall -q app simulations/virtual_field_rover
-      - name: Unit tests
+        run: python -m compileall -q app simulations/virtual_field_rover simulations/digital_environment
+      - name: Legacy Digital Farm tests
         working-directory: simulations/virtual_field_rover
         run: python -m unittest discover -v
-      - name: Bounded adaptive synthetic patrol
-        working-directory: simulations/virtual_field_rover
+      - name: Digital Environment platform tests
+        working-directory: simulations/digital_environment
+        run: python -m unittest discover -v
+      - name: Run bounded multi-environment synthetic suite
+        working-directory: simulations/digital_environment
         run: |
           rm -rf runtime
-          python monitor.py --cycles 1200 --summary runtime/summary.json
+          python engine.py --cycles 500 --summary runtime/summary.json
           python - <<'PY'
           import json
           from pathlib import Path
           s=json.loads(Path('runtime/summary.json').read_text())
+          required={'agriculture','warehouse','urban_green','industrial','software_system'}
+          assert s['classification'] == 'Internal Test Only'
           assert s['simulation_only'] is True
-          assert s['real_farm_connected'] is False
-          assert s['adaptive_behavior'] is True
-          assert s['privacy_yields'] > 0
-          assert s['privacy_reroutes'] > 0
-          assert s['adaptive_revisits'] > 0
-          assert s['degraded_sensor_cycles'] > 0
-          assert s['evidence_chain']['valid'] is True
-          assert s['asa_aoip_gateway']['valid'] is True
-          assert s['asa_aoip_gateway']['external_connection'] is False
-          print('Digital farm adaptive synthetic behavior: PASS')
+          assert s['real_environment_connected'] is False
+          assert s['environment_count'] >= 5
+          assert required.issubset(set(s['environment_types']))
+          assert s['all_evidence_valid'] is True
+          assert s['external_connection'] is False
+          for p in s['profiles']:
+              assert p['real_environment_connected'] is False
+              assert p['evidence_chain']['valid'] is True
+              assert p['asa_aoip_gateway']['valid'] is True
+              assert p['asa_aoip_gateway']['external_connection'] is False
+          print('Digital Environment synthetic suite: PASS')
           PY
       - name: Start governed ASA/AOIP local API
         env:
@@ -88,12 +96,12 @@ jobs:
           else:
               raise SystemExit('ASA/AOIP local API failed to become ready')
           PY
-      - name: Bridge digital farm behavior into ASA/AOIP
-        working-directory: simulations/virtual_field_rover
+      - name: Bridge Digital Environment suite into ASA/AOIP
+        working-directory: simulations/digital_environment
         env:
           ASA_API_BEARER_TOKEN: synthetic-ci-token-00000000000000000000000000000001
         run: python asa_bridge.py runtime/summary.json
-      - name: Verify bridged adaptive knowledge record
+      - name: Verify governed Digital Environment knowledge record
         env:
           ASA_API_BEARER_TOKEN: synthetic-ci-token-00000000000000000000000000000001
         run: |
@@ -103,25 +111,27 @@ jobs:
           from urllib.request import Request, urlopen
           token='synthetic-ci-token-00000000000000000000000000000001'
           req=Request(
-              'http://127.0.0.1:8000/api/v1/knowledge?q=' + quote('Digital Farm Synthetic Monitoring Run'),
+              'http://127.0.0.1:8000/api/v1/knowledge?q=' + quote('Digital Environment Synthetic Monitoring Suite'),
               headers={'Authorization': f'Bearer {token}', 'Accept': 'application/json'},
           )
           with urlopen(req, timeout=5) as r:
               rows=json.loads(r.read().decode())
-          assert rows, 'No bridged ASA/AOIP record found'
+          assert rows, 'No Digital Environment record found in ASA/AOIP'
           row=rows[0]
           assert row['data_origin'] == 'synthetic'
           assert row['status'] == 'draft'
           assert row['sensitivity'] == 'public'
           assert len(row['provenance_hash']) == 64
           content=json.loads(row['content'])
-          assert content['schema'] == 'asa.aoip.digital-farm-run-summary.v2'
-          assert content['adaptive_behavior'] is True
-          assert content['privacy_reroutes'] > 0
-          assert content['adaptive_revisits'] > 0
-          assert content['degraded_sensor_cycles'] > 0
-          assert content['real_farm_connected'] is False
-          print('Adaptive Digital Farm -> ASA/AOIP governed bridge: PASS')
+          assert content['schema'] == 'asa.aoip.digital-environment-suite.v1'
+          assert content['environment_count'] >= 5
+          assert content['real_environment_connected'] is False
+          assert content['boundary']['physical_actuation'] is False
+          assert content['boundary']['person_tracking'] is False
+          assert content['boundary']['covert_monitoring'] is False
+          assert 'hidden_incidents' not in row['content']
+          assert 'detected_incidents' not in row['content']
+          print('Digital Environment -> ASA/AOIP governed bridge: PASS')
           PY
       - name: Stop local API
         if: always()
