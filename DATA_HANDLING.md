@@ -62,6 +62,18 @@ A source may support an asserted result only when the evidence record identifies
 
 If a required field is unknown, the source must not be silently promoted to authoritative evidence. The claim remains limited to the strongest supported classification.
 
+### Provenance hash versioning
+
+A SHA-256 value is not sufficient by itself to describe how an application record was fingerprinted. Knowledge-record provenance must therefore identify the hash construction version alongside the digest.
+
+- Existing records that predate versioned hashing remain `legacy-v0`. Their historical hashes are not silently recalculated or relabeled.
+- New records, and records deliberately updated through the governed API, use `canonical-json-v1`.
+- `canonical-json-v1` hashes a deterministic JSON object containing the governed provenance fields plus the version marker itself, using stable key ordering and UTF-8 encoding before SHA-256.
+- The API and AI evidence citations expose both `provenance_hash` and `provenance_version` so a verifier can select the correct reconstruction method.
+- A migration or software update must not claim that a legacy digest was produced by a newer construction unless the record was actually reprocessed and the change is auditable.
+
+These controls improve reproducibility and field-boundary integrity. They do not constitute a digital signature, trusted timestamp, PKI certificate, external notarization, or proof of institutional approval.
+
 ### Source precedence
 
 When records conflict, use the strongest current evidence in this order unless an authorized policy states otherwise:
@@ -73,6 +85,22 @@ When records conflict, use the strongest current evidence in this order unless a
 5. secondary summary.
 
 A newer date alone is not enough to override a more authoritative source.
+
+## OpenAI pre-pilot provider data boundary
+
+The AI evidence-answer path is restricted to reviewed evidence that is both public in sensitivity and has a `synthetic` or `public` data origin. Internal, sensitive, restricted, and `approved_low_sensitivity` evidence is not eligible for this provider path.
+
+Before a question can enter the provider path:
+
+- the caller must explicitly classify the question as `public` or `synthetic` using the governed request boundary;
+- missing or broader question classifications fail closed;
+- `ASA_OPENAI_PREPILOT_ENABLED=true` must be set for the controlled pre-pilot path;
+- `ASA_OPENAI_DATA_TERMS_CONFIRMED=true` must be set only after the responsible operator has reviewed the applicable current provider data terms for the intended test;
+- the runtime API credential must be supplied through the approved environment/secret mechanism and must not be committed to the repository.
+
+The data-terms flag is an **operator confirmation gate only**. It is not Data Owner approval, Privacy/DPIA approval, InfoSec approval, contract-owner confirmation, enterprise authorization, or production approval.
+
+The local AI audit stores the SHA-256 hash of the question, the declared question data origin, event status, model identifier, and evidence IDs. It does not intentionally store the raw question text in the local audit record. Provider-side processing, retention, access, residency, abuse-monitoring, and training-use conditions remain governed by the provider terms and the organization's authorized review; this repository must not infer or overstate those conditions.
 
 ## P-004 data and review boundary
 
@@ -109,6 +137,8 @@ The contributor must verify:
 - [ ] No credentials, internal URLs, tenant identifiers, or connection strings are present.
 - [ ] No unapproved logo, trademark, or endorsement language is present.
 - [ ] Evidence claims identify their source, scope, version/freshness, and classification.
+- [ ] Provenance hashes identify the construction version and legacy hashes are not silently promoted.
+- [ ] AI provider-path questions are explicitly classified public/synthetic and the provider data-terms gate is deliberately confirmed for the test.
 - [ ] Internal-test metrics are not presented as official KPIs.
 - [ ] AI pre-review is not counted as independent human review.
 - [ ] The repository-policy check passes.
