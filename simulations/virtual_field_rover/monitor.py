@@ -142,6 +142,39 @@ class RobustAnomalyEngine:
         return round(min(1.0, weighted + max(0, agreeing - 1) * 0.08), 6)
 
 
+class FlexibleEnvironmentEngine:
+    """Choose a safe operating mode without controlling physical equipment."""
+
+    @staticmethod
+    def assess(
+        *,
+        network_available: bool,
+        battery_pct: float,
+        valid_sensor_ratio: float,
+        privacy_mode: str,
+    ) -> dict:
+        if privacy_mode == "PRIVACY_YIELD":
+            mode = "PRIVACY_YIELD"
+        elif valid_sensor_ratio < 0.60:
+            mode = "DEGRADED_SENSOR"
+        elif battery_pct < 20.0:
+            mode = "ENERGY_SAVER"
+        elif not network_available:
+            mode = "LOCAL_FALLBACK"
+        else:
+            mode = "NORMAL"
+
+        return {
+            "mode": mode,
+            "network_mode": "ONLINE" if network_available else "LOCAL_ONLY",
+            "battery_pct": round(battery_pct, 2),
+            "valid_sensor_ratio": round(valid_sensor_ratio, 3),
+            "decision_support": "local_rules",
+            "external_ai_call": False,
+            "autonomous_physical_actuation": False,
+        }
+
+
 class VirtualFarmMonitor:
     SENSOR_SPECS = {
         "temperature_c": (31.0, 1.2, 10.0),
@@ -155,6 +188,7 @@ class VirtualFarmMonitor:
         self.rng = random.Random(seed + 1000)
         self.farm = DigitalFarm(farm_map, seed)
         self.engine = RobustAnomalyEngine()
+        self.flex = FlexibleEnvironmentEngine()
         self.chain = EvidenceChain(runtime / "environmental_evidence.jsonl")
         self.aoip = EvidenceChain(runtime / "asa_aoip_environmental_gateway.jsonl")
         self.confirm_count = 0
@@ -164,11 +198,19 @@ class VirtualFarmMonitor:
         self.false_alerts = 0
         self.hidden_incidents: set[str] = set()
         self.detected_incidents: set[str] = set()
+        self.flexibility_modes: dict[str, int] = defaultdict(int)
 
     def _reading(self, name: str, incident: bool) -> tuple[float, float, bool]:
         base, noise, delta = self.SENSOR_SPECS[name]
+        if self.rng.random() < 0.02:
+            return round(base, 4), 0.0, False
         value = self.rng.gauss(base + (delta if incident else 0.0), noise)
         return round(value, 4), 1.0, True
+
+    def _synthetic_system_state(self) -> tuple[bool, float]:
+        network_available = self.rng.random() >= 0.08
+        battery_pct = self.rng.uniform(8.0, 100.0)
+        return network_available, battery_pct
 
     def cycle(self) -> dict:
         context, incident = self.farm.next_context()
@@ -185,12 +227,23 @@ class VirtualFarmMonitor:
         readings: dict[str, dict] = {}
         scores: dict[str, float] = {}
         health: dict[str, float] = {}
+        valid_count = 0
         for name in self.SENSOR_SPECS:
             value, sensor_health, valid = self._reading(name, incident)
             score = self.engine.score(name, value, sensor_health, valid)
             readings[name] = Reading(name, value, sensor_health, valid, score).__dict__
             scores[name] = score
             health[name] = sensor_health
+            valid_count += int(valid)
+
+        network_available, battery_pct = self._synthetic_system_state()
+        flexibility = self.flex.assess(
+            network_available=network_available,
+            battery_pct=battery_pct,
+            valid_sensor_ratio=valid_count / len(self.SENSOR_SPECS),
+            privacy_mode=privacy_mode,
+        )
+        self.flexibility_modes[flexibility["mode"]] += 1
 
         fused = self.engine.fuse(scores, health)
         self.confirm_count = self.confirm_count + 1 if fused >= 0.68 else 0
@@ -203,7 +256,7 @@ class VirtualFarmMonitor:
             else:
                 self.false_alerts += 1
             payload = {
-                "schema": "asa.aoip.environmental-evidence.v1",
+                "schema": "asa.aoip.environmental-evidence.v2",
                 "fact": {"readings": readings, "farm_context": context},
                 "inference": {"classification": "ENVIRONMENTAL_ANOMALY", "confidence": fused},
                 "privacy": {
@@ -212,19 +265,39 @@ class VirtualFarmMonitor:
                     "facial_recognition": False,
                     "person_media_stored": False,
                 },
+                "flexible_environment": flexibility,
+                "protected_storage": {
+                    "integrated_with_decor": True,
+                    "authorized_access_only": True,
+                    "hazardous_materials_allowed": False,
+                    "physical_lock_controlled_by_ai": False,
+                },
+                "ai_advisory_contract": {
+                    "provider": "OpenAI",
+                    "status": "contract_defined_not_connected",
+                    "input_scope": "synthetic_environmental_summary_only",
+                    "external_call_made": False,
+                    "decision_support_only": True,
+                    "human_verification_required": True,
+                    "autonomous_physical_actuation": False,
+                },
                 "control": {
                     "autonomous_physical_actuation": False,
                     "human_verification_required": True,
                 },
             }
             event = self.chain.append("confirmed_anomaly", payload)
-            self.aoip.append("environmental_evidence_ingest", {
-                "source_event_hash": event["record_hash"],
-                "schema": payload["schema"],
-                "evidence_classification": "Internal Test Only",
-                "external_connection": False,
-                "production_deployment": False,
-            })
+            self.aoip.append(
+                "environmental_evidence_ingest",
+                {
+                    "source_event_hash": event["record_hash"],
+                    "schema": payload["schema"],
+                    "evidence_classification": "Internal Test Only",
+                    "external_connection": False,
+                    "openai_external_call": False,
+                    "production_deployment": False,
+                },
+            )
             self.confirm_count = 0
 
         self.cycles += 1
@@ -234,6 +307,7 @@ class VirtualFarmMonitor:
             "zone_id": context["zone_id"],
             "fused_anomaly_score": fused,
             "active_alert": active_alert,
+            "flexible_environment_mode": flexibility["mode"],
         }
 
     def run(self, cycles: int) -> dict:
@@ -242,6 +316,7 @@ class VirtualFarmMonitor:
             last = self.cycle()
         chain_ok, chain_events = self.chain.verify()
         aoip_ok, aoip_events = self.aoip.verify()
+        protected_storage = self.farm.cfg["flexible_environment"]["protected_storage"]
         return {
             "classification": "Internal Test Only",
             "simulation_only": True,
@@ -251,8 +326,20 @@ class VirtualFarmMonitor:
             "detected_incidents": len(self.detected_incidents),
             "false_alerts": self.false_alerts,
             "privacy_yields": self.privacy_yields,
+            "flexibility_modes": dict(self.flexibility_modes),
+            "protected_storage": protected_storage,
+            "openai_advisory": {
+                "provider": "OpenAI",
+                "status": "contract_defined_not_connected",
+                "external_call_made": False,
+                "autonomous_physical_actuation": False,
+            },
             "evidence_chain": {"valid": chain_ok, "events": chain_events},
-            "asa_aoip_gateway": {"valid": aoip_ok, "events": aoip_events, "external_connection": False},
+            "asa_aoip_gateway": {
+                "valid": aoip_ok,
+                "events": aoip_events,
+                "external_connection": False,
+            },
             "last_state": last,
         }
 
