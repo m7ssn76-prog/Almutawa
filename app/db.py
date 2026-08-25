@@ -34,6 +34,16 @@ def _ensure_column(conn: sqlite3.Connection, name: str, definition: str) -> None
         conn.execute(f"ALTER TABLE knowledge_items ADD COLUMN {name} {definition}")
 
 
+def _ensure_ai_audit_column(
+    conn: sqlite3.Connection, name: str, definition: str
+) -> None:
+    columns = {
+        row[1] for row in conn.execute("PRAGMA table_info(ai_audit_events)").fetchall()
+    }
+    if name not in columns:
+        conn.execute(f"ALTER TABLE ai_audit_events ADD COLUMN {name} {definition}")
+
+
 def init_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = _connect()
@@ -66,6 +76,7 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS ai_audit_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 question_hash TEXT NOT NULL,
+                question_data_origin TEXT NOT NULL DEFAULT 'unverified_legacy',
                 status TEXT NOT NULL,
                 model TEXT NOT NULL DEFAULT '',
                 evidence_ids TEXT NOT NULL DEFAULT '',
@@ -84,6 +95,12 @@ def init_db() -> None:
         )
         _ensure_column(conn, "approval_reference", "TEXT")
         _ensure_column(conn, "provenance_hash", "TEXT NOT NULL DEFAULT ''")
+        # Historical AI audit rows predate explicit question classification.
+        _ensure_ai_audit_column(
+            conn,
+            "question_data_origin",
+            "TEXT NOT NULL DEFAULT 'unverified_legacy'",
+        )
         conn.commit()
     finally:
         conn.close()
