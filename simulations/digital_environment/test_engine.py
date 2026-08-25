@@ -3,8 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from engine import DigitalEnvironmentMonitor, load_profiles, run_suite, ROOT
-from asa_bridge import build_knowledge_payload
+from engine import DigitalEnvironmentMonitor, load_profiles, run_suite
+from environment_bridge import build_knowledge_payload
 
 
 class DigitalEnvironmentTests(unittest.TestCase):
