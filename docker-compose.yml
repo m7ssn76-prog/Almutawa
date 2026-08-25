@@ -15,6 +15,11 @@ services:
     environment:
       ASA_AOIP_DB_PATH: /data/asa_aoip.db
       ASA_API_BEARER_TOKEN: ${ASA_API_BEARER_TOKEN:?Set ASA_API_BEARER_TOKEN before starting}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ASA_OPENAI_PREPILOT_ENABLED: ${ASA_OPENAI_PREPILOT_ENABLED:-false}
+      ASA_OPENAI_DATA_TERMS_CONFIRMED: ${ASA_OPENAI_DATA_TERMS_CONFIRMED:-false}
+      ASA_OPENAI_MODEL: ${ASA_OPENAI_MODEL:-gpt-5.6-sol}
+      ASA_AUDIT_HMAC_KEY: ${ASA_AUDIT_HMAC_KEY:-}
       ASA_GATE_AVAILABLE: "true"
       ASA_GATE_ELIGIBLE: "true"
       ASA_GATE_AUTHORIZED: "true"
@@ -24,5 +29,35 @@ services:
       ASA_GATE_EVIDENCED: "true"
     volumes:
       - asa_data:/data
+
+  smart_farm:
+    build: .
+    init: true
+    read_only: true
+    command: ["sh", "-c", "uvicorn app.smart_farm:app --host 0.0.0.0 --port 8001 --workers 1"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    ports:
+      - "127.0.0.1:8001:8001"
+    environment:
+      PORT: "8001"
+      ASA_API_BEARER_TOKEN: ${ASA_API_BEARER_TOKEN:?Set ASA_API_BEARER_TOKEN before starting}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SMART_FARM_OPENAI_ENABLED: ${SMART_FARM_OPENAI_ENABLED:-false}
+      ASA_OPENAI_DATA_TERMS_CONFIRMED: ${ASA_OPENAI_DATA_TERMS_CONFIRMED:-false}
+      SMART_FARM_OPENAI_MODEL: ${SMART_FARM_OPENAI_MODEL:-gpt-5.6-sol}
+      ASA_GATE_AVAILABLE: "true"
+      ASA_GATE_ELIGIBLE: "true"
+      ASA_GATE_AUTHORIZED: "true"
+      ASA_GATE_CONNECTED: "true"
+      ASA_GATE_EXECUTED: "true"
+      ASA_GATE_TESTED: "true"
+      ASA_GATE_EVIDENCED: "true"
+
 volumes:
   asa_data:
