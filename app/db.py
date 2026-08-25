@@ -77,6 +77,7 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS ai_audit_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 question_hash TEXT NOT NULL,
+                question_fingerprint_version TEXT NOT NULL DEFAULT 'sha256-v0',
                 question_data_origin TEXT NOT NULL DEFAULT 'unverified_legacy',
                 status TEXT NOT NULL,
                 model TEXT NOT NULL DEFAULT '',
@@ -105,6 +106,13 @@ def init_db() -> None:
             conn,
             "question_data_origin",
             "TEXT NOT NULL DEFAULT 'unverified_legacy'",
+        )
+        # Existing audit rows retain the previous deterministic SHA-256
+        # semantics. New rows explicitly identify the keyed HMAC construction.
+        _ensure_ai_audit_column(
+            conn,
+            "question_fingerprint_version",
+            "TEXT NOT NULL DEFAULT 'sha256-v0'",
         )
         conn.commit()
     finally:

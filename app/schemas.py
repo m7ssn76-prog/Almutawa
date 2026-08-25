@@ -79,6 +79,10 @@ class KnowledgeItem(BaseModel):
     updated_at: str
 
 
+class EvidenceQuestionRequest(BaseModel):
+    q: str = Field(min_length=3, max_length=500)
+
+
 class EvidenceAgentOutput(BaseModel):
     status: EvidenceAnswerStatus
     answer: str = Field(min_length=1, max_length=4000)
