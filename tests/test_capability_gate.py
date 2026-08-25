@@ -241,10 +241,12 @@ def test_ai_path_returns_structured_grounded_answer_and_audits_hash_only(
     )
     assert created.status_code == 201
     evidence_id = created.json()["id"]
+    assert created.json()["provenance_version"] == "canonical-json-v1"
 
     async def fake_run(agent, prompt, run_config):
         assert "Synthetic public cladding evidence" in prompt
         assert '"data_origin":"synthetic"' in prompt
+        assert '"provenance_version":"canonical-json-v1"' in prompt
         assert "approval_reference" not in prompt
         assert run_config.tracing_disabled is True
         assert run_config.trace_include_sensitive_data is False
@@ -269,6 +271,7 @@ def test_ai_path_returns_structured_grounded_answer_and_audits_hash_only(
     assert body["model"] == "gpt-5.6-sol"
     assert body["evidence"][0]["id"] == evidence_id
     assert len(body["evidence"][0]["provenance_hash"]) == 64
+    assert body["evidence"][0]["provenance_version"] == "canonical-json-v1"
 
     with db.get_conn() as conn:
         audit = conn.execute(
