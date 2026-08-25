@@ -104,6 +104,10 @@ The data-terms flag is an **operator confirmation gate only**. It is not Data Ow
 
 The local AI audit does not intentionally store the raw question text. Historical pre-HMAC audit rows retain their prior `sha256-v0` semantics. New audit rows use a keyed `hmac-sha256-v1` question fingerprint plus the declared question data origin, event status, model identifier, and evidence IDs. The HMAC key is environment-backed and separate from the stored audit record. A keyed fingerprint reduces offline guessing risk compared with an unkeyed digest, but it is not encryption and must not be presented as irreversible anonymization.
 
+New AI audit events are also linked through a versioned `hmac-sha256-chain-v1` integrity chain. Each chained event protects its previous event hash, question fingerprint metadata, declared data origin, status, model identifier, evidence IDs, and stored creation time. The chain key is derived from the environment-backed audit HMAC material using a separate domain, so the event-chain construction is cryptographically separated from the question-fingerprint construction. Existing records that predate chaining remain `legacy-unchained-v0`; they are not silently rewritten into a historical chain. The internal verifier checks the legacy-to-chain boundary, previous-hash links, and every chained event HMAC, allowing ordinary record edits or broken links to be detected during controlled verification.
+
+This chain is **tamper-evident, not immutable**. A party with sufficient database access and the audit secret could potentially rebuild the chain, and the control is not an external timestamp, append-only institutional log, HSM-backed signature, SIEM/WORM store, or independent notarization. Those stronger guarantees remain external or future controls.
+
 Provider-side processing, retention, access, residency, abuse-monitoring, and training-use conditions remain governed by the provider terms and the organization's authorized review; this repository must not infer or overstate those conditions.
 
 ## P-004 data and review boundary
@@ -144,6 +148,7 @@ The contributor must verify:
 - [ ] Provenance hashes identify the construction version and legacy hashes are not silently promoted.
 - [ ] AI provider-path questions are explicitly classified public/synthetic, sent in the POST body rather than URL query parameters, and the provider data-terms gate is deliberately confirmed for the test.
 - [ ] New AI audit fingerprints use the environment-backed keyed construction and do not persist the raw question text.
+- [ ] New AI audit events form a verifiable keyed chain, while historical pre-chain records remain explicitly legacy.
 - [ ] Internal-test metrics are not presented as official KPIs.
 - [ ] AI pre-review is not counted as independent human review.
 - [ ] The repository-policy check passes.
