@@ -94,8 +94,10 @@ def _ensure_ai_audit_column(
 
 def _install_ai_audit_chain_trigger(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TRIGGER IF EXISTS ai_audit_events_chain_v1")
+    # Keep this DDL completely static. Besides eliminating an unnecessary
+    # interpolation surface, this lets the security scanner reason about it.
     conn.execute(
-        f"""
+        """
         CREATE TRIGGER ai_audit_events_chain_v1
         AFTER INSERT ON ai_audit_events
         BEGIN
@@ -105,13 +107,13 @@ def _install_ai_audit_chain_trigger(conn: sqlite3.Connection) -> None:
                         SELECT event_hash
                         FROM ai_audit_events
                         WHERE id < NEW.id
-                          AND event_integrity_version = '{_AUDIT_CHAIN_VERSION}'
+                          AND event_integrity_version = 'hmac-sha256-chain-v1'
                         ORDER BY id DESC
                         LIMIT 1
                     ),
                     ''
                 ),
-                event_integrity_version = '{_AUDIT_CHAIN_VERSION}',
+                event_integrity_version = 'hmac-sha256-chain-v1',
                 event_hash = asa_audit_event_hash(
                     NEW.question_hash,
                     NEW.question_fingerprint_version,
@@ -124,7 +126,7 @@ def _install_ai_audit_chain_trigger(conn: sqlite3.Connection) -> None:
                             SELECT event_hash
                             FROM ai_audit_events
                             WHERE id < NEW.id
-                              AND event_integrity_version = '{_AUDIT_CHAIN_VERSION}'
+                              AND event_integrity_version = 'hmac-sha256-chain-v1'
                             ORDER BY id DESC
                             LIMIT 1
                         ),
