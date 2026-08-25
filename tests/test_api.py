@@ -349,26 +349,124 @@ def test_external_probe_works_only_after_all_guards(client: TestClient, monkeypa
         lambda *args, **kwargs: [(2, 1, 6, "", ("93.184.216.34", 443))],
     )
 
-    class FakeResponse:
-        status = 200
-
-        def read(self, size: int) -> bytes:
-            return b"ok"
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-    class FakeOpener:
-        def open(self, request, timeout: float):
-            assert request.full_url == "https://example.com/health"
-            assert timeout == 2
-            return FakeResponse()
-
-    monkeypatch.setattr(main_module, "build_opener", lambda *args: FakeOpener())
-
     response = client.get("/api/v1/external/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "host": "example.com", "http_status": 200}
+
+
+def _create_reviewed_public_ai_evidence(client: TestClient) -> int:
+    response = client.post(
+        "/api/v1/knowledge",
+        json={
+            "title": "Public weld traceability evidence",
+            "content": "Synthetic public evidence about weld traceability and evidence controls.",
+            "status": "reviewed",
+            "source_type": "text",
+            "purpose": "ai evidence boundary test",
+            "sensitivity": "public",
+            "transformation_state": "original",
+            "data_origin": "public",
+        },
+    )
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
+def test_ai_question_origin_header_is_required(client: TestClient) -> None:
+    response = client.get(
+        "/api/v1/ai/evidence-answer",
+        params={"q": "weld traceability"},
+    )
+    assert response.status_code == 422
+    assert "public or synthetic" in response.json()["detail"]
+
+
+def test_ai_question_origin_rejects_nonpublic_classification(client: TestClient) -> None:
+    response = client.get(
+        "/api/v1/ai/evidence-answer",
+        params={"q": "weld traceability"},
+        headers={"X-ASA-Question-Data-Origin": "internal"},
+    )
+    assert response.status_code == 422
+    assert "public or synthetic" in response.json()["detail"]
+
+
+def test_ai_data_terms_gate_blocks_provider_use(
+    client: TestClient, monkeypatch
+) -> None:
+    _create_reviewed_public_ai_evidence(client)
+    monkeypatch.setenv("ASA_OPENAI_PREPILOT_ENABLED", "true")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-provider-boundary-000000000000000000")
+    monkeypatch.delenv("ASA_OPENAI_DATA_TERMS_CONFIRMED", raising=False)
+
+    response = client.get(
+        "/api/v1/ai/evidence-answer",
+        params={"q": "weld traceability"},
+        headers={"X-ASA-Question-Data-Origin": "public"},
+    )
+    assert response.status_code == 503
+    assert response.json()["detail"] == "OpenAI data-terms confirmation gate is closed"
+
+
+def test_ai_insufficient_evidence_audits_origin_without_raw_question(
+    client: TestClient,
+) -> None:
+    question = "unique synthetic question with no evidence 918273"
+    response = client.get(
+        "/api/v1/ai/evidence-answer",
+        params={"q": question},
+        headers={"X-ASA-Question-Data-Origin": "synthetic"},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "insufficient_evidence"
+
+    with db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT question_hash, question_data_origin, status FROM ai_audit_events ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    assert row is not None
+    assert row["question_data_origin"] == "synthetic"
+    assert row["status"] == "insufficient_evidence"
+    assert row["question_hash"] != question
+    assert len(row["question_hash"]) == 64
+
+
+def test_ai_provider_path_runs_only_after_all_privacy_gates(
+    client: TestClient, monkeypatch
+) -> None:
+    evidence_id = _create_reviewed_public_ai_evidence(client)
+    monkeypatch.setenv("ASA_OPENAI_PREPILOT_ENABLED", "true")
+    monkeypatch.setenv("ASA_OPENAI_DATA_TERMS_CONFIRMED", "true")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-provider-boundary-000000000000000000")
+
+    class FakeResult:
+        final_output = main_module.EvidenceAgentOutput(
+            status="answered",
+            answer="Supported by reviewed public evidence.",
+            evidence_ids=[evidence_id],
+        )
+
+    async def fake_run(*args, **kwargs):
+        run_config = kwargs["run_config"]
+        assert run_config.tracing_disabled is True
+        assert run_config.trace_include_sensitive_data is False
+        return FakeResult()
+
+    monkeypatch.setattr(main_module.Runner, "run", fake_run)
+
+    response = client.get(
+        "/api/v1/ai/evidence-answer",
+        params={"q": "weld traceability"},
+        headers={"X-ASA-Question-Data-Origin": "public"},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "answered"
+    assert response.json()["evidence"][0]["id"] == evidence_id
+
+    with db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT question_data_origin, status FROM ai_audit_events ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    assert row is not None
+    assert row["question_data_origin"] == "public"
+    assert row["status"] == "answered"
