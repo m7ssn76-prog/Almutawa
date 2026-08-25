@@ -49,6 +49,7 @@ _DERIVED_SOURCE_TYPES: set[SourceType] = {"audio_transcript", "ocr_text", "trans
 _MAX_EXTERNAL_RESPONSE_BYTES = 65_536
 _MIN_API_TOKEN_LENGTH = 32
 _MAX_AI_EVIDENCE_ITEMS = 5
+_MAX_AI_SCAN_ITEMS = 100
 _MAX_AI_EVIDENCE_CONTENT_CHARS = 4_000
 _DEFAULT_AI_MODEL = "gpt-5.6-sol"
 
@@ -325,35 +326,37 @@ def _question_hash(question: str) -> str:
 
 def _search_reviewed_public_evidence(question: str) -> list[KnowledgeItem]:
     terms = [
-        term
+        term.casefold()
         for term in re.findall(r"[\w-]{3,}", question, flags=re.UNICODE)
         if term.strip("_-")
     ][:8]
     if not terms:
         return []
 
-    clauses: list[str] = []
-    params: list[str | int] = []
-    for term in terms:
-        clauses.append("(title LIKE ? OR content LIKE ?)")
-        wildcard = f"%{term}%"
-        params.extend([wildcard, wildcard])
-
-    sql = f"""
-        SELECT *
-        FROM knowledge_items
-        WHERE status = 'reviewed'
-          AND sensitivity = 'public'
-          AND transformation_state IN ('original', 'verified_against_original')
-          AND ({' OR '.join(clauses)})
-        ORDER BY updated_at DESC, id DESC
-        LIMIT ?
-    """
-    params.append(_MAX_AI_EVIDENCE_ITEMS)
-
     with get_conn() as conn:
-        rows = conn.execute(sql, params).fetchall()
-    return [_safe_item(row) for row in rows]
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM knowledge_items
+            WHERE status = 'reviewed'
+              AND sensitivity = 'public'
+              AND transformation_state IN ('original', 'verified_against_original')
+            ORDER BY updated_at DESC, id DESC
+            LIMIT ?
+            """,
+            (_MAX_AI_SCAN_ITEMS,),
+        ).fetchall()
+
+    scored: list[tuple[int, KnowledgeItem]] = []
+    for row in rows:
+        item = _safe_item(row)
+        searchable = f"{item.title}\n{item.content}".casefold()
+        score = sum(1 for term in terms if term in searchable)
+        if score:
+            scored.append((score, item))
+
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    return [item for _, item in scored[:_MAX_AI_EVIDENCE_ITEMS]]
 
 
 def _evidence_packet(items: list[KnowledgeItem]) -> str:
