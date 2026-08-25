@@ -69,6 +69,11 @@ jobs:
           grep -Eq '^USER[[:space:]]+app$' Dockerfile
           grep -Fq '"127.0.0.1:8000:8000"' docker-compose.yml
           grep -Fq 'ASA_API_BEARER_TOKEN: ${ASA_API_BEARER_TOKEN:?' docker-compose.yml
+          grep -Fq 'read_only: true' docker-compose.yml
+          grep -Fq 'no-new-privileges:true' docker-compose.yml
+          grep -Fq -- '- ALL' docker-compose.yml
+          grep -Fq 'pids_limit: 128' docker-compose.yml
+          grep -Fq '/tmp:rw,noexec,nosuid,size=16m' docker-compose.yml
           if grep -Eq 'pip[[:space:]]+install[[:space:]]+.*--upgrade[[:space:]]+pip' Dockerfile; then
             echo 'Unpinned pip self-upgrade is forbidden in the verification image.'
             exit 1
@@ -119,6 +124,11 @@ jobs:
           start_container() {
             docker run -d \
               --name "$container_name" \
+              --read-only \
+              --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+              --cap-drop ALL \
+              --security-opt no-new-privileges \
+              --pids-limit 128 \
               -p 127.0.0.1:8000:8000 \
               -e ASA_AOIP_DB_PATH=/data/asa_aoip.db \
               -e ASA_API_BEARER_TOKEN="$token" \
@@ -221,4 +231,4 @@ jobs:
           assert persisted['purpose'] == 'runtime_persistence_verification'
           PY
 
-          echo 'Runtime HTTP, authentication, CRUD write/read, container restart, and SQLite persistence verification passed.'
+          echo 'Runtime HTTP, authentication, CRUD write/read, container restart, SQLite persistence, read-only rootfs, capability drop, no-new-privileges, and PID limit verification passed.'
