@@ -22,6 +22,7 @@ DataOrigin = Literal[
     "approved_low_sensitivity",
     "unverified_legacy",
 ]
+EvidenceAnswerStatus = Literal["answered", "insufficient_evidence"]
 
 
 class KnowledgeCreate(BaseModel):
@@ -74,3 +75,22 @@ class KnowledgeItem(BaseModel):
     provenance_hash: str
     created_at: str
     updated_at: str
+
+
+class EvidenceAgentOutput(BaseModel):
+    status: EvidenceAnswerStatus
+    answer: str = Field(min_length=1, max_length=4000)
+    evidence_ids: list[int] = Field(default_factory=list, max_length=10)
+
+
+class EvidenceCitation(BaseModel):
+    id: int
+    title: str
+    provenance_hash: str
+
+
+class EvidenceAnswerResponse(BaseModel):
+    status: EvidenceAnswerStatus
+    answer: str
+    model: str | None = None
+    evidence: list[EvidenceCitation] = Field(default_factory=list, max_length=10)
