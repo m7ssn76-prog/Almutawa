@@ -54,7 +54,7 @@ Branch protection/rulesets are separate GitHub settings controls. CI checks comp
 - Knowledge-item CRUD operations
 - Keyword search and lifecycle status filtering
 - fail-closed environment-backed bearer authentication for `/api/v1/*`
-- input validation and provenance hashing
+- input validation, auditable data-origin metadata, and provenance hashing
 - governed OpenAI Agents SDK evidence-answer path
 - structured AI output with evidence-ID validation
 - privacy-preserving AI audit events using question hashes instead of raw questions
@@ -72,7 +72,10 @@ Its evidence boundary is intentionally stricter than the normal knowledge API:
 
 - only records with `status=reviewed` are eligible;
 - only records with `sensitivity=public` are eligible for transmission to the model provider;
+- only `data_origin=synthetic` or `data_origin=public` records are eligible; `approved_low_sensitivity` records remain excluded from this provider path;
 - transformed records must be `verified_against_original`;
+- provenance hashing binds the data-origin metadata as part of the evidence identity;
+- approval references are not included in the model evidence packet;
 - no eligible evidence means no provider call is made;
 - model-generated evidence IDs are validated against the exact candidate set before a response is released;
 - Agents SDK tracing is disabled for this path;
