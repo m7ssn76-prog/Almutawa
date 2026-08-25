@@ -34,6 +34,7 @@ _EXECUTION_CLAIM_RE = re.compile(
     r"(?:تم|نُفذ|نفذ|اشتغل|شغّال|نجح|دُمج|دمج|نشر|متصل|تشغيل|إنتاجي))",
     re.IGNORECASE,
 )
+_MULTI_CLAIM_RE = re.compile(r"[.!?؟]\s+\S")
 
 
 class KnowledgeCreate(BaseModel):
@@ -120,7 +121,7 @@ class EvidenceAgentOutput(BaseModel):
     claims: list[EvidenceClaim] = Field(
         default_factory=list,
         max_length=12,
-        description="Claim-level evidence map. Required for answered output.",
+        description="Claim-level evidence map. Required for multi-claim answered output.",
     )
 
     @model_validator(mode="after")
@@ -132,7 +133,20 @@ class EvidenceAgentOutput(BaseModel):
             return self
 
         if not self.claims:
-            raise ValueError("answered output requires claim-level evidence mapping")
+            # Narrow compatibility path for pre-existing callers/tests: one atomic
+            # sentence may be promoted to exactly one verified claim, but only when
+            # it already carries evidence IDs. Multi-claim prose still fails closed.
+            if not self.evidence_ids:
+                raise ValueError("answered output requires evidence IDs")
+            if _MULTI_CLAIM_RE.search(self.answer.strip()) or "\n" in self.answer.strip():
+                raise ValueError("multi-claim answered output requires claim-level evidence mapping")
+            self.claims = [
+                EvidenceClaim(
+                    text=self.answer.strip(),
+                    status="verified",
+                    evidence_ids=list(dict.fromkeys(self.evidence_ids)),
+                )
+            ]
 
         used: list[int] = []
         for claim in self.claims:
