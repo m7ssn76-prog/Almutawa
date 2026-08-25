@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import http.client
 import ipaddress
 import json
 import os
 import re
 import socket
+import ssl
 from contextlib import asynccontextmanager
 from typing import Any
-from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from agents import Agent, ModelSettings, RunConfig, Runner
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response, status
@@ -60,9 +60,39 @@ _PROVENANCE_VERSION = "canonical-json-v1"
 _QUESTION_FINGERPRINT_VERSION = "hmac-sha256-v1"
 
 
-class _NoRedirect(HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
-        return None
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """HTTPS connection that preserves hostname verification but pins the TCP peer IP."""
+
+    def __init__(
+        self,
+        *,
+        host: str,
+        pinned_ip: str,
+        port: int,
+        timeout: float,
+        context: ssl.SSLContext | None = None,
+    ) -> None:
+        super().__init__(
+            host=host,
+            port=port,
+            timeout=timeout,
+            context=context or ssl.create_default_context(),
+        )
+        self._pinned_ip = pinned_ip
+
+    def connect(self) -> None:
+        raw_socket = socket.create_connection(
+            (self._pinned_ip, self.port),
+            timeout=self.timeout,
+        )
+        try:
+            self.sock = self._context.wrap_socket(
+                raw_socket,
+                server_hostname=self.host,
+            )
+        except Exception:
+            raw_socket.close()
+            raise
 
 
 def _contains_secret(value: str) -> bool:
@@ -269,7 +299,7 @@ def _allowed_external_hosts() -> set[str]:
     }
 
 
-def _validate_external_target(raw_url: str) -> tuple[str, str]:
+def _validate_external_target(raw_url: str) -> tuple[str, str, str, int]:
     if not _env_flag("ASA_PRODUCTION_MODE", default=False):
         raise HTTPException(status_code=503, detail="Production mode is not enabled")
     if not _env_flag("ASA_PRODUCTION_APPROVED", default=False):
@@ -289,24 +319,60 @@ def _validate_external_target(raw_url: str) -> tuple[str, str]:
     if host not in _allowed_external_hosts():
         raise HTTPException(status_code=503, detail="External target host is not allowlisted")
 
+    port = parsed.port or 443
     try:
-        addresses = socket.getaddrinfo(host, parsed.port or 443, type=socket.SOCK_STREAM)
+        addresses = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except socket.gaierror as exc:
         raise HTTPException(status_code=503, detail="External target DNS resolution failed") from exc
 
+    verified_ips: list[str] = []
     for address in addresses:
         ip = ipaddress.ip_address(address[4][0])
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_multicast
-            or ip.is_reserved
-            or ip.is_unspecified
-        ):
+        if not ip.is_global:
             raise HTTPException(status_code=503, detail="External target resolved to a blocked address")
+        normalized = str(ip)
+        if normalized not in verified_ips:
+            verified_ips.append(normalized)
 
-    return raw_url, host
+    if not verified_ips:
+        raise HTTPException(status_code=503, detail="External target DNS resolution returned no addresses")
+
+    return raw_url, host, verified_ips[0], port
+
+
+def _request_pinned_https(
+    *,
+    target: str,
+    host: str,
+    pinned_ip: str,
+    port: int,
+    timeout: float,
+) -> tuple[int, bytes]:
+    parsed = urlsplit(target)
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+
+    connection = _PinnedHTTPSConnection(
+        host=host,
+        pinned_ip=pinned_ip,
+        port=port,
+        timeout=timeout,
+    )
+    try:
+        connection.request(
+            "GET",
+            path,
+            headers={
+                "User-Agent": "ASA-AOIP-Production-Probe/1.0",
+                "Accept": "application/json,text/plain,*/*",
+            },
+        )
+        response = connection.getresponse()
+        body = response.read(_MAX_EXTERNAL_RESPONSE_BYTES + 1)
+        return int(response.status), body
+    finally:
+        connection.close()
 
 
 def _external_probe() -> dict[str, str | int]:
@@ -317,28 +383,21 @@ def _external_probe() -> dict[str, str | int]:
     raw_url = os.getenv("ASA_EXTERNAL_URL", "").strip()
     if not raw_url:
         raise HTTPException(status_code=503, detail="External target is not configured")
-    target, host = _validate_external_target(raw_url)
+    target, host, pinned_ip, port = _validate_external_target(raw_url)
 
-    request = Request(
-        target,
-        method="GET",
-        headers={
-            "User-Agent": "ASA-AOIP-Production-Probe/1.0",
-            "Accept": "application/json,text/plain,*/*",
-        },
-    )
-    opener = build_opener(_NoRedirect)
     try:
-        with opener.open(request, timeout=_external_timeout()) as response:
-            body = response.read(_MAX_EXTERNAL_RESPONSE_BYTES + 1)
-            if len(body) > _MAX_EXTERNAL_RESPONSE_BYTES:
-                raise HTTPException(status_code=502, detail="External response exceeded size limit")
-            status_code = int(response.status)
-    except HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"External target returned HTTP {exc.code}") from exc
-    except (URLError, TimeoutError, OSError) as exc:
+        status_code, body = _request_pinned_https(
+            target=target,
+            host=host,
+            pinned_ip=pinned_ip,
+            port=port,
+            timeout=_external_timeout(),
+        )
+    except (http.client.HTTPException, ssl.SSLError, TimeoutError, OSError) as exc:
         raise HTTPException(status_code=502, detail="External target connection failed") from exc
 
+    if len(body) > _MAX_EXTERNAL_RESPONSE_BYTES:
+        raise HTTPException(status_code=502, detail="External response exceeded size limit")
     if not 200 <= status_code < 300:
         raise HTTPException(status_code=502, detail=f"External target returned HTTP {status_code}")
 
