@@ -1,7 +1,7 @@
 {
   "system_id": "ASA-GITHUB-AUDIT-001",
   "name": "ASA GitHub Evidence Audit",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "repository": {
     "full_name": "m7ssn76-prog/Almutawa",
     "repository_id": 1305663312,
@@ -12,6 +12,33 @@
   "status": "implemented_github_actions_verified_internal_test",
   "classification": "Internal Test Only",
   "purpose": "Create traceable evidence for repository activity without reading secrets, overstating current state, or modifying external repositories.",
+  "human_accountability_rule": {
+    "name": "Information Compression Without Accountability Compression",
+    "canonical_statement_en": "AI should compress information, not compress accountability.",
+    "canonical_statement_ar": "الذكاء الاصطناعي يختصر زمن الوصول إلى المعلومة، ولا يختصر مسؤولية القرار.",
+    "status": "Design / Governance Control",
+    "principles": [
+      "AI may aggregate, summarize, classify, prioritize, simulate, and recommend only within authorized evidence and data boundaries.",
+      "High-impact decisions remain with an authorized human decision-maker unless a separately approved automation policy explicitly permits bounded execution.",
+      "AI output used for decision support must expose evidence, uncertainty, conflicts, assumptions, and material unknowns in proportion to decision risk.",
+      "Decision speed must not outrun evidence quality, authorization, accountability, or required safety and governance controls.",
+      "No model confidence score, ranking, generated recommendation, or automated summary substitutes for institutional authority, professional judgment, approved procedures, or required approvals."
+    ],
+    "crisis_decision_loop": [
+      "observe",
+      "verify",
+      "synthesize",
+      "prioritize",
+      "recommend",
+      "authorized_human_decide",
+      "act",
+      "audit",
+      "learn"
+    ],
+    "prohibited_shortcut": "data -> AI -> high-impact action without required verification and authorized human authority",
+    "escalation_rule": "When evidence is insufficient, conflicting, degraded, restricted, stale, or materially high-impact, the system must limit, refuse, or escalate rather than silently increase certainty or authority.",
+    "success_rule": "The objective is the fastest decision that remains adequately evidenced, authorized, auditable, and proportionate to risk; not the fastest decision possible."
+  },
   "repository_visibility_policy": {
     "mode": "public_safe",
     "verified_visibility": "public",
@@ -318,7 +345,8 @@
     "evaluate_kpi_eligibility",
     "evaluate_evidence_admissibility",
     "evaluate_hard_gates",
-    "evaluate_pre_pilot_execution_readiness"
+    "evaluate_pre_pilot_execution_readiness",
+    "evaluate_human_accountability_gate"
   ],
   "forbidden_operations": [
     "read_or_print_secrets",
@@ -330,7 +358,9 @@
     "count_ai_pre_review_as_independent_human_review",
     "promote_internal_test_metrics_to_official_kpis_without_eligibility_evidence",
     "close_external_approval_gates_from_local_test_results",
-    "treat_readiness_percentage_as_authorized_go_decision"
+    "treat_readiness_percentage_as_authorized_go_decision",
+    "treat_ai_recommendation_as_authorized_high_impact_decision",
+    "allow_decision_speed_to_bypass_evidence_authority_or_required_human_accountability"
   ],
   "status_gate": {
     "design": "may be documented",
