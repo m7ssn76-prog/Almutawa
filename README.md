@@ -57,7 +57,7 @@ Branch protection/rulesets are separate GitHub settings controls. CI checks comp
 - input validation, auditable data-origin metadata, and provenance hashing
 - governed OpenAI Agents SDK evidence-answer path
 - structured AI output with evidence-ID validation
-- privacy-preserving AI audit events using question hashes instead of raw questions
+- privacy-preserving AI audit events using keyed, versioned HMAC-SHA-256 question fingerprints instead of raw questions
 - Docker and Docker Compose for local verification
 - automated tests and GitHub Actions CI
 - repository policy scanning for secrets and prohibited file types
@@ -198,9 +198,9 @@ Its evidence boundary is intentionally stricter than the normal knowledge API:
 - model-generated evidence IDs are validated against the exact candidate set before a response is released;
 - Agents SDK tracing is disabled for this path;
 - model responses are requested with `store=False`;
-- the local AI audit table stores a SHA-256 hash of the question, event status, model name, and evidence IDs, not the raw question or model answer.
+- the local AI audit table stores a keyed `hmac-sha256-v1` question fingerprint, its construction version, declared question data origin, event status, model name, and evidence IDs — not the raw question or model answer.
 
-The path also requires an explicit `ASA_OPENAI_PREPILOT_ENABLED=true` runtime flag and a valid `OPENAI_API_KEY` supplied through the runtime environment or an approved secret manager. **Never commit an API key to this repository.**
+The path requires all of the following at runtime before a provider call is permitted: an operational local capability gate, `ASA_OPENAI_PREPILOT_ENABLED=true`, `ASA_OPENAI_DATA_TERMS_CONFIRMED=true`, a valid `OPENAI_API_KEY`, and an environment-backed `ASA_AUDIT_HMAC_KEY` for the keyed audit fingerprint. Secrets must be supplied through the runtime environment or an approved secret manager. **Never commit an API key, bearer token, or audit HMAC key to this repository.**
 
 This integration is an **Internal Test Only** capability. It does not establish approved enterprise AI-provider terms, company-data authorization, production deployment, institutional approval, Enterprise SSO/RBAC, KMS/HSM, or a completed independent security assessment.
 
@@ -246,7 +246,7 @@ The automated AI-path tests use a synthetic credential-shaped value and a mocked
 
 - `GET /health` — bounded unauthenticated local health check
 - `GET /api/v1/external/health` — authenticated and additionally fail-closed by external-connection controls
-- `GET /api/v1/ai/evidence-answer?q=...` — authenticated, reviewed-public-evidence-only, explicitly gated pre-pilot AI path
+- `POST /api/v1/ai/evidence-answer` — authenticated, reviewed-public-evidence-only, explicitly gated pre-pilot AI path; question is supplied in a JSON body and `X-ASA-Question-Data-Origin: public|synthetic` is required; GET question transport is intentionally unsupported
 - `POST /api/v1/knowledge` — authenticated
 - `GET /api/v1/knowledge?q=term&status=reviewed` — authenticated
 - `GET /api/v1/knowledge/{id}` — authenticated
