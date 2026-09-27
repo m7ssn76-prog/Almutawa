@@ -9,10 +9,17 @@ __pycache__/
 .env
 .env.*
 !.env.example
+.envrc
+.npmrc
+.pypirc
+.netrc
+pip.conf
 *.pem
 *.key
 *.pfx
 *.p12
+*.jks
+*.keystore
 *.key.txt
 *password*.txt
 *passwd*.txt
@@ -23,6 +30,22 @@ __pycache__/
 *api-key*.txt
 credentials*.json
 secrets*.json
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+.aws/
+.azure/
+.gcloud/
+.docker/
+
+# Infrastructure state and local overrides
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+terraform.tfvars
+terraform.tfvars.json
 
 # Databases, exports, logs, and backups
 *.db
