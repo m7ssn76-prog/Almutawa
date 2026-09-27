@@ -86,6 +86,78 @@ Every remaining gap is placed into one of four categories:
 | External Approval Ready | Project can prepare the package but cannot self-approve | Recorded decision from the authorized external function |
 | Hard Gate | Status must not progress while missing | Required evidence **and/or** authorized decision, according to the gate |
 
+### Human Sustainability & Relationship Preservation — Design / Governance Only
+
+ASA/AOIP treats sustained human cost as a governance concern when evaluating high-pressure work, projects, or periods of concentrated ambition. The purpose is **not** to reduce ambition. The purpose is to avoid describing an outcome as complete success while ignoring a material, foreseeable cost to human sustainability, social connection, or important relationships.
+
+This principle is currently **Design / Governance Only**. It is not a clinical feature, employee-monitoring system, family-monitoring system, productivity score, psychological assessment, or automated intervention.
+
+#### Evidence boundary
+
+Public research reviewed for this design indicates that work-family conflict is associated with adverse well-being and mental-health outcomes, while social connection is recognized as relevant to health and well-being. These sources support treating relationship and social-connection costs as a legitimate governance consideration, but they do **not** justify assuming causation for an individual person or inferring a person's private mental state.
+
+Public references:
+
+- Liu D, Ni Y, Ma TSW, Fan X, Zhan Y, et al. (2026). *Work-family conflict and mental health: A systematic review and meta-analysis*. PLOS Medicine 23(7): e1005162. DOI: https://doi.org/10.1371/journal.pmed.1005162
+- World Health Organization (2025). *From loneliness to social connection: charting a path to healthier societies — Report of the WHO Commission on Social Connection*. ISBN 978-92-4-011236-0. https://www.who.int/publications/i/item/978240112360
+
+#### Reasoning linkage: S pattern
+
+The design can be reasoned through a bounded **S pattern**:
+
+1. **Source** — capture the stated observation, evidence, or experience without promoting it to fact beyond its scope.
+2. **Signal** — identify a possible pattern such as sustained work pressure, repeated postponement of important relationships, or persistent boundary erosion.
+3. **Science** — compare the signal against reliable public research and explicitly record limitations.
+4. **Score** — where measurement is appropriate, assess the project or process against defined governance indicators; do not score people, relationships, affection, loyalty, or mental state.
+5. **Decision** — choose a proportionate project or planning response, such as adding a boundary, review point, communication commitment, or recovery period.
+
+#### Reasoning linkage: Pizza pattern
+
+The same concept can be layered through the project's **Pizza pattern**:
+
+- **Foundation** — values, human dignity, important relationships, health, and the purpose of the work.
+- **Protection** — minimum boundaries that a high-pressure objective should not silently consume.
+- **Linkage** — communicate the temporary pressure, expected duration, and affected commitments to the relevant people rather than relying on indefinite absence.
+- **Development** — pursue the project, ambition, learning, promotion, or innovation within the declared boundary.
+- **Stress test** — check whether the arrangement still works during the actual peak-pressure period, not only in calm conditions.
+- **Measurement** — use non-invasive process indicators such as whether review dates occurred, whether the declared high-pressure period exceeded its end date, and whether agreed protected commitments were repeatedly displaced.
+- **Verification** — distinguish a temporary, communicated sacrifice from an open-ended pattern that has become the default.
+- **Impact** — evaluate achievement together with sustainability rather than treating output alone as sufficient evidence of success.
+
+#### Cost of Arrival Gate
+
+Before a high-demand initiative is treated as a controlled temporary exception, the design proposes a **Cost of Arrival Gate** with the following fields:
+
+- objective and expected benefit;
+- expected high-pressure duration and explicit end date;
+- human or relationship domains likely to be affected;
+- minimum protected commitments that should remain intact;
+- review cadence during the high-pressure period;
+- criteria for extending, stopping, or reducing the exception;
+- post-period recovery or reconnection action;
+- evidence classification for every claimed outcome.
+
+A temporary sacrifice should not become an indefinite operating model merely because a new target replaces the previous target.
+
+#### Privacy and dignity guardrails
+
+This principle must not be implemented in a way that:
+
+- monitors private family communications;
+- ranks or scores family members, friends, employees, or personal relationships;
+- infers affection, loyalty, intent, psychological state, or diagnosis;
+- creates automated punishment or employment consequences from personal-life data;
+- requires disclosure of unnecessary personal or family information;
+- converts a reflective planning aid into covert surveillance.
+
+If implemented later, any data collection must pass the existing Evidence, Risk, Privacy, and Audit controls and use the minimum information necessary for the stated purpose.
+
+#### Derived insight
+
+The governance insight is: **achievement and human sustainability are separate dimensions**. A project can meet its technical target while still creating an unmeasured human cost. Therefore ASA/AOIP should keep these dimensions separate in evidence and reporting rather than collapsing both into a single success label.
+
+A useful review question is: *If the current operating pattern continued for several years, would the resulting human and relationship condition still be consistent with the stated purpose and values of the work?* This is a reflective governance prompt, not an automated judgment.
+
 ### Current P-004 hard gates
 
 The following must remain visibly open until independently evidenced:
